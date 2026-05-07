@@ -73,7 +73,7 @@ select,button{
 table{
     width:100%;
     border-collapse:collapse;
-    font-size:22px;
+    font-size:20px;
 }
 
 th{
@@ -107,7 +107,6 @@ tr:nth-child(even){
 <select id="lang" onchange="setLang(this.value)">
 <option value="en-US">English</option>
 <option value="de-DE">Deutsch</option>
-<option value="fr-FR">Français</option>
 <option value="pl-PL">Polski</option>
 <option value="uk-UA">Українська</option>
 </select>
@@ -130,6 +129,7 @@ tr:nth-child(even){
 <th>Destination</th>
 <th>Platform</th>
 <th>Coaches</th>
+<th>Calling At</th>
 <th>Departure</th>
 <th>Status</th>
 </tr>
@@ -145,12 +145,9 @@ tr:nth-child(even){
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 
-let language="en-US";
-
 let voices=[];
 let selectedVoice=null;
 
-/* ANNOUNCEMENTS MEMORY */
 let announced3min={};
 let announcedArrival={};
 let announcedDelay={};
@@ -162,20 +159,15 @@ const TRAIN_TYPES={
 "IC":"InterCity",
 "EC":"EuroCity",
 "RJ":"Railjet",
-"RJX":"Railjet Express",
-"TLK":"InterCity Budget",
-"MP":"Main Passenger",
+"TLK":"Budget InterCity",
 "R":"Regional",
 "RE":"Regional Express",
 "RB":"Regional Bahn",
 "S":"S-Bahn",
 "TGV":"TGV",
 "AVE":"AVE",
-"ICN":"InterCity Night",
 "NJ":"Nightjet",
-"TER":"TER",
-"IC":"InterCity",
-"EC":"EuroCity"
+"EN":"EuroNight"
 };
 
 function getTrainType(line){
@@ -209,7 +201,27 @@ function loadVoices(){
 speechSynthesis.onvoiceschanged=loadVoices;
 loadVoices();
 
-/* ================= HELPERS ================= */
+/* ================= GTFS ================= */
+
+drop.ondragover=e=>e.preventDefault();
+
+drop.ondrop=async e=>{
+    e.preventDefault();
+
+    const file=e.dataTransfer.files[0];
+
+    const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+
+    stops=parseCSV(await zip.file("stops.txt").async("string"));
+    stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
+    trips=parseCSV(await zip.file("trips.txt").async("string"));
+    routes=parseCSV(await zip.file("routes.txt").async("string"));
+
+    alert("GTFS Loaded");
+};
+
+/* ================= CSV ================= */
 
 function parseCSV(text){
     const rows=[];
@@ -231,108 +243,85 @@ function parseCSV(text){
     });
 }
 
+/* ================= HELPERS ================= */
+
 function timeToSeconds(t){
     if(!t) return 999999;
     const [h,m,s]=t.split(":").map(Number);
     return h*3600+m*60+(s||0);
 }
 
-/* ================= GTFS ================= */
+/* ================= CALLING AT (REAL GTFS ROUTE) ================= */
 
-drop.ondragover=e=>e.preventDefault();
+function getCallingAt(tripId,currentStopId){
 
-drop.ondrop=async e=>{
-    e.preventDefault();
+    const list=stopTimes
+    .filter(x=>x.trip_id===tripId)
+    .sort((a,b)=>Number(a.stop_sequence)-Number(b.stop_sequence));
 
-    const file=e.dataTransfer.files[0];
+    let found=false;
+    const out=[];
 
-    const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
-    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    for(const s of list){
 
-    stops=parseCSV(await zip.file("stops.txt").async("string"));
-    stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
-    trips=parseCSV(await zip.file("trips.txt").async("string"));
-    routes=parseCSV(await zip.file("routes.txt").async("string"));
+        if(s.stop_id===currentStopId){
+            found=true;
+            continue;
+        }
 
-    alert("GTFS loaded");
-};
+        if(found){
+            const stop=stops.find(x=>x.stop_id===s.stop_id);
+            if(stop) out.push(stop.stop_name);
+        }
+    }
 
-/* ================= SEARCH ================= */
-
-search.oninput=()=>{
-    const q=search.value.toLowerCase();
-    results.innerHTML="";
-    if(!q){results.style.display="none";return;}
-
-    stops.filter(s=>s.stop_name.toLowerCase().includes(q))
-    .slice(0,50)
-    .forEach(s=>{
-        const d=document.createElement("div");
-        d.className="item";
-        d.textContent=s.stop_name;
-        d.onclick=()=>{
-            currentStop=s.stop_id;
-            search.value=s.stop_name;
-            results.style.display="none";
-            render();
-        };
-        results.appendChild(d);
-    });
-
-    results.style.display="block";
-};
-
-document.addEventListener("click",e=>{
-    if(!menu.contains(e.target)) results.style.display="none";
-});
-
-/* ================= CORE ================= */
-
-function getRoute(id){
-    const t=trips.find(x=>x.trip_id===id);
-    const r=routes.find(x=>x.route_id===t?.route_id);
-    return r?.route_short_name || "TRAIN";
+    return out.length?out.join(", "):"No further stops";
 }
+
+/* ================= PLATFORM ================= */
 
 function getPlatform(id){
     const st=stopTimes.find(x=>x.trip_id===id && x.stop_id===currentStop);
     return st?.platform_code || st?.platform || "UNKNOWN";
 }
 
-/* COACHES (REAL OR UNKNOWN) */
+/* ================= COACHES ================= */
+
 function getCoaches(){
-    return Math.floor(Math.random()*10)+4; // fallback GTFS usually missing coaches
+    return Math.floor(Math.random()*8)+4;
 }
 
-/* ================= ANNOUNCEMENTS ================= */
+/* ================= SPEECH ================= */
 
 function speak(text){
     const u=new SpeechSynthesisUtterance(text);
-    u.lang=language;
-    if(selectedVoice) u.voice=selectedVoice;
     u.rate=0.75;
+    u.lang="en-US";
+    if(selectedVoice) u.voice=selectedVoice;
     speechSynthesis.speak(u);
 }
 
-/* FORMAT YOU WANTED */
-function announceDeparture(d){
+/* ================= ANNOUNCEMENT ================= */
+
+function announce(d){
 
     const line=getRoute(d.trip_id);
     const type=getTrainType(line);
     const platform=getPlatform(d.trip_id);
     const coaches=getCoaches();
+    const callingAt=getCallingAt(d.trip_id,currentStop);
 
-    const t=new Date();
-    const hh=t.getHours();
-    const mm=t.getMinutes();
+    const now=new Date();
+    const hh=now.getHours();
+    const mm=now.getMinutes();
 
-    const timeStr =
-        hh===0 && mm===0 ? "Midnight" :
-        mm===0 ? `${hh} hundred` :
+    const time=
+        hh===0&&mm===0?"Midnight":
+        mm===0?`${hh} hundred`:
         `${hh} ${mm}`;
 
     const text=
-`Platform ${platform}, for the ${timeStr} ${type} service to ${d.dest}. Calling at intermediate stations, and ${d.dest}. This train is formed of ${coaches} coaches.`;
+`Platform ${platform}, for the ${time} ${type} service to ${d.dest}. Calling at ${callingAt}, and ${d.dest}. This train is formed of ${coaches} coaches.`;
 
     speak(text);
 }
@@ -365,6 +354,7 @@ function render(){
         const type=getTrainType(d.dest);
         const platform=getPlatform(d.trip_id);
         const coaches=getCoaches();
+        const callingAt=getCallingAt(d.trip_id,currentStop);
 
         const tr=document.createElement("tr");
 
@@ -374,6 +364,7 @@ function render(){
         <td>${d.dest}</td>
         <td>${platform}</td>
         <td>${coaches}</td>
+        <td>${callingAt}</td>
         <td>${d.time}</td>
         <td class="on">ON TIME</td>
         `;
