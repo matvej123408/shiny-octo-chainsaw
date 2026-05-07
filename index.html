@@ -113,63 +113,15 @@ tr:nth-child(even){
 <input id="search" placeholder="Search station...">
 
 <select id="lang" onchange="setLang(this.value)">
-
-<option value="af-ZA">Afrikaans</option>
-<option value="sq-AL">Albanian</option>
-<option value="ar-SA">Arabic</option>
-<option value="hy-AM">Armenian</option>
-<option value="az-AZ">Azerbaijani</option>
-<option value="eu-ES">Basque</option>
-<option value="bn-BD">Bengali</option>
-<option value="bg-BG">Bulgarian</option>
-<option value="ca-ES">Catalan</option>
-<option value="zh-CN">Chinese Simplified</option>
-<option value="zh-TW">Chinese Traditional</option>
-<option value="hr-HR">Croatian</option>
-<option value="cs-CZ">Czech</option>
-<option value="da-DK">Danish</option>
-<option value="nl-NL">Dutch</option>
-<option value="en-US" selected>English</option>
-<option value="et-EE">Estonian</option>
-<option value="fi-FI">Finnish</option>
-<option value="fr-FR">French</option>
-<option value="gl-ES">Galician</option>
-<option value="ka-GE">Georgian</option>
-<option value="de-DE">German</option>
-<option value="el-GR">Greek</option>
-<option value="he-IL">Hebrew</option>
-<option value="hi-IN">Hindi</option>
-<option value="hu-HU">Hungarian</option>
-<option value="is-IS">Icelandic</option>
-<option value="id-ID">Indonesian</option>
-<option value="ga-IE">Irish</option>
-<option value="it-IT">Italian</option>
+<option value="en-US">English</option>
+<option value="de-DE">Deutsch</option>
+<option value="fr-FR">Français</option>
+<option value="it-IT">Italiano</option>
+<option value="es-ES">Español</option>
+<option value="uk-UA">Українська</option>
+<option value="ru-RU">Русский</option>
 <option value="ja-JP">Japanese</option>
-<option value="kk-KZ">Kazakh</option>
-<option value="ko-KR">Korean</option>
-<option value="lv-LV">Latvian</option>
-<option value="lt-LT">Lithuanian</option>
-<option value="mk-MK">Macedonian</option>
-<option value="ms-MY">Malay</option>
-<option value="no-NO">Norwegian</option>
-<option value="fa-IR">Persian</option>
-<option value="pl-PL">Polish</option>
-<option value="pt-PT">Portuguese</option>
-<option value="ro-RO">Romanian</option>
-<option value="ru-RU">Russian</option>
-<option value="sr-RS">Serbian</option>
-<option value="sk-SK">Slovak</option>
-<option value="sl-SI">Slovenian</option>
-<option value="es-ES">Spanish</option>
-<option value="sw-KE">Swahili</option>
-<option value="sv-SE">Swedish</option>
-<option value="ta-IN">Tamil</option>
-<option value="th-TH">Thai</option>
-<option value="tr-TR">Turkish</option>
-<option value="uk-UA">Ukrainian</option>
-<option value="ur-PK">Urdu</option>
-<option value="vi-VN">Vietnamese</option>
-
+<option value="zh-CN">Chinese</option>
 </select>
 
 <select id="voiceSelect"></select>
@@ -206,17 +158,18 @@ let stops=[], stopTimes=[], trips=[], routes=[];
 
 let currentStop=null;
 
-let spoken={};
-let announced10min={};
-let announced5min={};
-let announced1min={};
-
 let language="en-US";
 
 let voices=[];
 let selectedVoice=null;
 
-/* ================= LOAD VOICES ================= */
+let announced3min={};
+let announcedArrival={};
+let announcedDelay={};
+
+/* =========================================================
+VOICE SYSTEM
+========================================================= */
 
 function loadVoices(){
 
@@ -242,54 +195,27 @@ function loadVoices(){
 
         selectedVoice=voices[voiceSelect.value];
 
-        localStorage.setItem(
-            "voiceIndex",
-            voiceSelect.value
-        );
     };
 
-    const saved=localStorage.getItem("voiceIndex");
-
-    if(saved && voices[saved]){
-
-        voiceSelect.value=saved;
-
-        selectedVoice=voices[saved];
-
-    }else{
-
-        selectedVoice=voices[0];
-
-    }
+    selectedVoice=voices[0];
 }
 
 speechSynthesis.onvoiceschanged=loadVoices;
 
 loadVoices();
 
-/* ================= LANGUAGE ================= */
+/* =========================================================
+LANGUAGE
+========================================================= */
 
 function setLang(l){
 
     language=l;
-
-    localStorage.setItem(
-        "boardLanguage",
-        l
-    );
 }
 
-const savedLang=
-localStorage.getItem("boardLanguage");
-
-if(savedLang){
-
-    language=savedLang;
-
-    document.getElementById("lang").value=savedLang;
-}
-
-/* ================= CSV ================= */
+/* =========================================================
+CSV
+========================================================= */
 
 function parseCSV(text){
 
@@ -306,18 +232,15 @@ function parseCSV(text){
         else if(c==',' && !q){
 
             row.push(cur);
-
             cur="";
         }
 
         else if(c=='\n' && !q){
 
             row.push(cur);
-
             rows.push(row);
 
             row=[];
-
             cur="";
         }
 
@@ -332,8 +255,7 @@ function parseCSV(text){
 
         headers.forEach((h,i)=>{
 
-            o[h.trim()] =
-            (r[i]||"").trim();
+            o[h.trim()] = (r[i]||"").trim();
 
         });
 
@@ -341,7 +263,9 @@ function parseCSV(text){
     });
 }
 
-/* ================= NORMALIZE ================= */
+/* =========================================================
+NORMALIZE
+========================================================= */
 
 function normalize(t){
 
@@ -351,7 +275,9 @@ function normalize(t){
     .replace(/[\u0300-\u036f]/g,"");
 }
 
-/* ================= DROP GTFS ================= */
+/* =========================================================
+GTFS LOAD
+========================================================= */
 
 drop.ondragover=e=>e.preventDefault();
 
@@ -387,10 +313,12 @@ drop.ondrop=async e=>{
         await zip.file("routes.txt").async("string")
     );
 
-    alert("GTFS loaded!");
+    alert("GTFS Loaded!");
 };
 
-/* ================= SEARCH ================= */
+/* =========================================================
+SEARCH
+========================================================= */
 
 search.oninput=()=>{
 
@@ -440,11 +368,12 @@ document.addEventListener("click",e=>{
     if(!menu.contains(e.target)){
 
         results.style.display="none";
-
     }
 });
 
-/* ================= HELPERS ================= */
+/* =========================================================
+HELPERS
+========================================================= */
 
 function getRoute(id){
 
@@ -456,7 +385,20 @@ function getRoute(id){
         x=>x.route_id===t?.route_id
     );
 
-    return r?.route_short_name || "BUS";
+    return r?.route_short_name || "TRAIN";
+}
+
+function getOperator(id){
+
+    const t=trips.find(
+        x=>x.trip_id===id
+    );
+
+    const r=routes.find(
+        x=>x.route_id===t?.route_id
+    );
+
+    return r?.agency_id || "National Rail";
 }
 
 function getDest(id){
@@ -468,8 +410,6 @@ function getDest(id){
     return t?.trip_headsign || "UNKNOWN";
 }
 
-/* ================= REAL PLATFORM ================= */
-
 function getPlatform(tripId){
 
     const st=stopTimes.find(x=>
@@ -479,25 +419,76 @@ function getPlatform(tripId){
 
     );
 
-    if(!st) return "-";
-
     return (
 
-        st.platform_code ||
-
-        st.track ||
-
-        st.platform ||
-
-        st.bay ||
-
-        st.stop_platform ||
-
-        st.stop_code ||
-
+        st?.platform_code ||
+        st?.platform ||
+        st?.track ||
+        st?.bay ||
         "-"
 
     );
+}
+
+function getCallingAt(tripId){
+
+    const current=stopTimes.find(x=>
+
+        x.trip_id===tripId &&
+        x.stop_id===currentStop
+
+    );
+
+    if(!current) return "";
+
+    const laterStops=stopTimes
+
+    .filter(x=>
+
+        x.trip_id===tripId &&
+        Number(x.stop_sequence)>
+        Number(current.stop_sequence)
+
+    )
+
+    .sort((a,b)=>
+
+        Number(a.stop_sequence)-
+        Number(b.stop_sequence)
+
+    );
+
+    const names=laterStops.map(s=>{
+
+        const stop=stops.find(
+            x=>x.stop_id===s.stop_id
+        );
+
+        return stop?.stop_name;
+
+    }).filter(Boolean);
+
+    return names.join(", ");
+}
+
+function getOrigin(tripId){
+
+    const first=stopTimes
+
+    .filter(x=>x.trip_id===tripId)
+
+    .sort((a,b)=>
+
+        Number(a.stop_sequence)-
+        Number(b.stop_sequence)
+
+    )[0];
+
+    const stop=stops.find(
+        x=>x.stop_id===first.stop_id
+    );
+
+    return stop?.stop_name || "Unknown";
 }
 
 function timeToSeconds(t){
@@ -509,64 +500,22 @@ function timeToSeconds(t){
     return h*3600 + m*60 + (s||0);
 }
 
-/* ================= ANNOUNCEMENTS ================= */
+function speakTime(depTime){
 
-async function announce(line,dest,msgType){
+    const [h,m]=depTime.split(":").map(Number);
 
-    const gong=document.getElementById("gong");
+    if(h===0 && m===0){
 
-    try{
-        await gong.play();
-    }catch(e){}
-
-    let text="";
-
-    switch(msgType){
-
-        case "added":
-
-            text=`${line} to ${dest} added to the board.`;
-
-        break;
-
-        case "10min":
-
-            text=`${line} to ${dest} arriving in ten minutes.`;
-
-        break;
-
-        case "5min":
-
-            text=`${line} to ${dest} arriving in five minutes.`;
-
-        break;
-
-        case "1min":
-
-            text=`${line} to ${dest} is arriving. Please let passengers exit first.`;
-
-        break;
-
-        default:
-
-            text=msgType;
+        return "Midnight";
     }
 
-    const u=new SpeechSynthesisUtterance(text);
+    if(m===0){
 
-    u.lang=language;
-
-    if(selectedVoice){
-
-        u.voice=selectedVoice;
+        return `${h} hundred`;
     }
 
-    u.rate=0.9;
-
-    speechSynthesis.speak(u);
+    return `${h} ${m}`;
 }
-
-/* ================= STATUS ================= */
 
 function getStatus(diff){
 
@@ -574,11 +523,9 @@ function getStatus(diff){
 
     if(diff <= 60 && diff > 20) return "ARRIVING";
 
-    if(diff <= 20 && diff > 1) return "ARRIVED";
+    if(diff <= 20 && diff > 1) return "BOARDING";
 
     if(diff <= 1 && diff >= 0) return "DEPARTING";
-
-    if(diff < 0 && diff >= -6) return "DEPARTED";
 
     return "DEPARTED";
 }
@@ -613,7 +560,83 @@ function getTimeLeft(depTime){
     return `⏱ ${s}s`;
 }
 
-/* ================= RENDER ================= */
+/* =========================================================
+ANNOUNCEMENTS
+========================================================= */
+
+async function speak(text){
+
+    const gong=document.getElementById("gong");
+
+    try{
+        await gong.play();
+    }catch(e){}
+
+    const u=new SpeechSynthesisUtterance(text);
+
+    u.lang=language;
+
+    if(selectedVoice){
+
+        u.voice=selectedVoice;
+    }
+
+    u.rate=0.92;
+
+    speechSynthesis.speak(u);
+}
+
+async function departureAnnouncement(d){
+
+    const platform=getPlatform(d.trip_id);
+
+    const operator=getOperator(d.trip_id);
+
+    const dest=getDest(d.trip_id);
+
+    const calls=getCallingAt(d.trip_id);
+
+    const time=speakTime(d.time);
+
+    const text=
+`Platform ${platform}, for the ${time} ${operator} service to ${dest}. Calling at ${calls}, and ${dest}. This train is formed of 8 coaches. First class is located at the front of the train.`;
+
+    speak(text);
+}
+
+async function delayAnnouncement(d){
+
+    const operator=getOperator(d.trip_id);
+
+    const dest=getDest(d.trip_id);
+
+    const time=speakTime(d.time);
+
+    const delay=Math.floor(
+        (d.delay||300)/60
+    );
+
+    const text=
+`The ${time} ${operator} service to ${dest}, is delayed by approximately ${delay} minutes. We are sorry that your journey will take longer than planned.`;
+
+    speak(text);
+}
+
+async function arrivalAnnouncement(d){
+
+    const platform=getPlatform(d.trip_id);
+
+    const origin=getOrigin(d.trip_id);
+
+    const text=
+`The train now approaching platform ${platform}, terminates here. This train is the service from ${origin}.`;
+
+    speak(text);
+}
+
+/* =========================================================
+RENDER
+========================================================= */
 
 function render(){
 
@@ -645,7 +668,9 @@ function render(){
 
         time:t.departure_time,
 
-        sec:timeToSeconds(t.departure_time)
+        sec:timeToSeconds(t.departure_time),
+
+        delay:0
 
     }))
 
@@ -681,55 +706,42 @@ function render(){
 
         const diff=d.sec-nowSec;
 
-        /* 10 MIN */
+        /* 3 MIN ANNOUNCEMENT */
 
         if(
-            diff<=600 &&
-            diff>595 &&
-            !announced10min[d.trip_id]
+            diff<=180 &&
+            diff>175 &&
+            !announced3min[d.trip_id]
         ){
 
-            announced10min[d.trip_id]=true;
+            announced3min[d.trip_id]=true;
 
-            announce(
-                line,
-                dest,
-                "10min"
-            );
+            departureAnnouncement(d);
         }
 
-        /* 5 MIN */
+        /* ARRIVAL */
 
         if(
-            diff<=300 &&
-            diff>295 &&
-            !announced5min[d.trip_id]
+            diff<=45 &&
+            diff>40 &&
+            !announcedArrival[d.trip_id]
         ){
 
-            announced5min[d.trip_id]=true;
+            announcedArrival[d.trip_id]=true;
 
-            announce(
-                line,
-                dest,
-                "5min"
-            );
+            arrivalAnnouncement(d);
         }
 
-        /* 1 MIN */
+        /* DELAY */
 
         if(
-            diff<=60 &&
-            diff>55 &&
-            !announced1min[d.trip_id]
+            d.delay>120 &&
+            !announcedDelay[d.trip_id]
         ){
 
-            announced1min[d.trip_id]=true;
+            announcedDelay[d.trip_id]=true;
 
-            announce(
-                line,
-                dest,
-                "1min"
-            );
+            delayAnnouncement(d);
         }
 
         const tr=document.createElement("tr");
@@ -743,23 +755,14 @@ function render(){
         `;
 
         board.appendChild(tr);
-
-        if(!spoken[line]){
-
-            announce(
-                line,
-                dest,
-                "added"
-            );
-
-            spoken[line]=true;
-        }
     });
 }
 
 setInterval(render,1000);
 
-/* ================= FULLSCREEN ================= */
+/* =========================================================
+FULLSCREEN
+========================================================= */
 
 function toggleFullscreen(){
 
