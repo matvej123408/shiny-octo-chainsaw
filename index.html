@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>EUROPEAN DEPARTURES BOARD</title>
+<title>EUROPEAN DEPARTURES SYSTEM</title>
 
 <style>
 body{
@@ -17,18 +17,16 @@ header{
     padding:15px;
     text-align:center;
     font-size:40px;
-    letter-spacing:5px;
     border-bottom:4px solid #ffcc00;
 }
 
 #menu{
-    position:relative;
-    padding:10px;
-    background:#0a0a0a;
     display:flex;
     gap:10px;
-    align-items:center;
+    padding:10px;
+    background:#0a0a0a;
     flex-wrap:wrap;
+    align-items:center;
 }
 
 #search{
@@ -49,19 +47,17 @@ select,button{
 
 #results{
     position:absolute;
-    top:50px;
-    left:10px;
-    width:320px;
     background:#111;
-    border:1px solid #333;
+    width:320px;
     max-height:300px;
     overflow:auto;
     display:none;
-    z-index:1000;
+    border:1px solid #333;
+    z-index:999;
 }
 
 .item{padding:10px;cursor:pointer;}
-.item:hover{background:#222}
+.item:hover{background:#222;}
 
 #drop{
     margin:10px;
@@ -76,39 +72,36 @@ table{
     font-size:20px;
 }
 
-th{
-    background:#111;
-    padding:12px;
-    border-bottom:3px solid #ffcc00;
-}
-
-td{
+th,td{
     padding:10px;
     text-align:center;
     border-bottom:1px solid #222;
 }
 
-tr:nth-child(even){
-    background:#0a0a0a;
+th{
+    background:#111;
+    border-bottom:3px solid #ffcc00;
 }
 
+tr:nth-child(even){background:#0a0a0a;}
+
 .on{color:#00ff66;}
+.cancel{color:#ff4444;}
+.delay{color:#ff8800;}
 </style>
 </head>
 
 <body>
 
-<header>EUROPEAN DEPARTURES</header>
+<header>EUROPEAN DEPARTURES SYSTEM</header>
 
 <div id="menu">
 
 <input id="search" placeholder="Search station...">
 
-<select id="lang" onchange="setLang(this.value)">
-<option value="en-US">English</option>
-<option value="de-DE">Deutsch</option>
-<option value="pl-PL">Polski</option>
-<option value="uk-UA">Українська</option>
+<select id="mode">
+<option value="schedule">GTFS SCHEDULE</option>
+<option value="realtime">GTFS REALTIME</option>
 </select>
 
 <select id="voiceSelect"></select>
@@ -134,74 +127,59 @@ tr:nth-child(even){
 <th>Status</th>
 </tr>
 </thead>
-
 <tbody id="board"></tbody>
 </table>
 
-<audio id="gong" src="gong.mp3"></audio>
+<audio id="gong"></audio>
 
 <script>
 
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 
-let voices=[];
-let selectedVoice=null;
+let voices=[], selectedVoice=null;
 
-let announced3min={};
-let announcedArrival={};
-let announcedDelay={};
+/* ================= SEARCH FIX ================= */
 
-/* ================= TRAIN TYPES ================= */
+search.oninput=()=>{
 
-const TRAIN_TYPES={
-"REG":"Regional",
-"IC":"InterCity",
-"EC":"EuroCity",
-"RJ":"Railjet",
-"TLK":"Budget InterCity",
-"R":"Regional",
-"RE":"Regional Express",
-"RB":"Regional Bahn",
-"S":"S-Bahn",
-"TGV":"TGV",
-"AVE":"AVE",
-"NJ":"Nightjet",
-"EN":"EuroNight"
-};
+    const q=search.value.toLowerCase().trim();
+    results.innerHTML="";
+    if(!q){results.style.display="none";return;}
 
-function getTrainType(line){
-    if(!line) return "Train";
-    const u=line.toUpperCase();
-    for(const k in TRAIN_TYPES){
-        if(u.startsWith(k)) return TRAIN_TYPES[k];
-    }
-    return "Train";
-}
+    const seen=new Set();
 
-/* ================= VOICES ================= */
+    stops
+    .filter(s=>s.stop_name.toLowerCase().includes(q))
+    .filter(s=>{
+        if(seen.has(s.stop_name)) return false;
+        seen.add(s.stop_name);
+        return true;
+    })
+    .slice(0,50)
+    .forEach(s=>{
+        const d=document.createElement("div");
+        d.className="item";
+        d.textContent=s.stop_name;
 
-function loadVoices(){
-    voices=speechSynthesis.getVoices();
-    const sel=document.getElementById("voiceSelect");
-    sel.innerHTML="";
-    voices.forEach((v,i)=>{
-        const o=document.createElement("option");
-        o.value=i;
-        o.textContent=`${v.name} (${v.lang})`;
-        sel.appendChild(o);
+        d.onclick=()=>{
+            currentStop=s.stop_id;
+            search.value=s.stop_name;
+            results.style.display="none";
+            render();
+        };
+
+        results.appendChild(d);
     });
 
-    sel.onchange=()=>{
-        selectedVoice=voices[sel.value];
-    };
+    results.style.display="block";
+};
 
-    selectedVoice=voices[0];
-}
-speechSynthesis.onvoiceschanged=loadVoices;
-loadVoices();
+document.addEventListener("click",e=>{
+    if(!menu.contains(e.target)) results.style.display="none";
+});
 
-/* ================= GTFS ================= */
+/* ================= GTFS LOAD ================= */
 
 drop.ondragover=e=>e.preventDefault();
 
@@ -218,7 +196,7 @@ drop.ondrop=async e=>{
     trips=parseCSV(await zip.file("trips.txt").async("string"));
     routes=parseCSV(await zip.file("routes.txt").async("string"));
 
-    alert("GTFS Loaded");
+    alert("GTFS loaded");
 };
 
 /* ================= CSV ================= */
@@ -238,7 +216,7 @@ function parseCSV(text){
     const h=rows[0];
     return rows.slice(1).map(r=>{
         const o={};
-        h.forEach((x,i)=>o[x.trim()]=(r[i]||"").trim());
+        h.forEach((x,i)=>o[x]=(r[i]||"").trim());
         return o;
     });
 }
@@ -251,9 +229,9 @@ function timeToSeconds(t){
     return h*3600+m*60+(s||0);
 }
 
-/* ================= CALLING AT (REAL GTFS ROUTE) ================= */
+/* ================= CALLING AT ================= */
 
-function getCallingAt(tripId,currentStopId){
+function getCallingAt(tripId,stopId){
 
     const list=stopTimes
     .filter(x=>x.trip_id===tripId)
@@ -264,31 +242,18 @@ function getCallingAt(tripId,currentStopId){
 
     for(const s of list){
 
-        if(s.stop_id===currentStopId){
+        if(s.stop_id===stopId){
             found=true;
             continue;
         }
 
         if(found){
-            const stop=stops.find(x=>x.stop_id===s.stop_id);
-            if(stop) out.push(stop.stop_name);
+            const st=stops.find(x=>x.stop_id===s.stop_id);
+            if(st) out.push(st.stop_name);
         }
     }
 
-    return out.length?out.join(", "):"No further stops";
-}
-
-/* ================= PLATFORM ================= */
-
-function getPlatform(id){
-    const st=stopTimes.find(x=>x.trip_id===id && x.stop_id===currentStop);
-    return st?.platform_code || st?.platform || "UNKNOWN";
-}
-
-/* ================= COACHES ================= */
-
-function getCoaches(){
-    return Math.floor(Math.random()*8)+4;
+    return out.length ? out.join(", ") : "No further stops";
 }
 
 /* ================= SPEECH ================= */
@@ -301,27 +266,49 @@ function speak(text){
     speechSynthesis.speak(u);
 }
 
-/* ================= ANNOUNCEMENT ================= */
+/* ================= YOUR ANNOUNCEMENT FORMAT ================= */
 
-function announce(d){
+function departureAnnouncement(d){
 
-    const line=getRoute(d.trip_id);
-    const type=getTrainType(line);
-    const platform=getPlatform(d.trip_id);
-    const coaches=getCoaches();
-    const callingAt=getCallingAt(d.trip_id,currentStop);
+    const platform="UNKNOWN";
+    const operator="Rail Service";
+    const destination=d.dest || "Unknown";
+
+    const coaches=Math.floor(Math.random()*8)+4;
 
     const now=new Date();
     const hh=now.getHours();
     const mm=now.getMinutes();
 
     const time=
-        hh===0&&mm===0?"Midnight":
-        mm===0?`${hh} hundred`:
+        hh===0 && mm===0 ? "Midnight" :
+        mm===0 ? `${hh} hundred` :
         `${hh} ${mm}`;
 
+    const callingAt=getCallingAt(d.trip_id,currentStop);
+
     const text=
-`Platform ${platform}, for the ${time} ${type} service to ${d.dest}. Calling at ${callingAt}, and ${d.dest}. This train is formed of ${coaches} coaches.`;
+`Platform ${platform}, for the ${time} ${operator} service to: ${destination}. Calling at ${callingAt}, and ${destination}. This train is formed of ${coaches} coaches.`;
+
+    speak(text);
+}
+
+/* ================= DELAY ================= */
+
+function delayAnnouncement(d,operator,dest,time){
+
+    const text=
+`The ${time} ${operator} service to ${dest}, is delayed by approximately ${d.delay} minutes. We are sorry that your journey will take longer than planned.`;
+
+    speak(text);
+}
+
+/* ================= CANCEL ================= */
+
+function cancelAnnouncement(d,operator,dest,time){
+
+    const text=
+`Your attention please! The ${time} ${operator} service to ${dest}, has been cancelled. This is due to a member of the train crew being unavailable.`;
 
     speak(text);
 }
@@ -338,38 +325,51 @@ function render(){
     const board=document.getElementById("board");
     board.innerHTML="";
 
-    const data=stopTimes
+    let data=stopTimes
     .filter(t=>t.stop_id===currentStop)
     .map(t=>({
         trip_id:t.trip_id,
         time:t.departure_time,
         sec:timeToSeconds(t.departure_time),
-        dest:getRoute(t.trip_id)
+        dest:"Route"
     }))
-    .filter(t=>t.sec>=sec-10)
     .slice(0,15);
 
     data.forEach(d=>{
 
-        const type=getTrainType(d.dest);
-        const platform=getPlatform(d.trip_id);
-        const coaches=getCoaches();
-        const callingAt=getCallingAt(d.trip_id,currentStop);
-
         const tr=document.createElement("tr");
 
+        let status="ON TIME";
+        let className="on";
+
+        if(d.delay>0){
+            status=`DELAY ${d.delay}`;
+            className="delay";
+        }
+
+        if(d.cancelled){
+            status="CANCELLED";
+            className="cancel";
+        }
+
         tr.innerHTML=`
-        <td>${type}</td>
+        <td>TRAIN</td>
         <td>${d.dest}</td>
         <td>${d.dest}</td>
-        <td>${platform}</td>
-        <td>${coaches}</td>
-        <td>${callingAt}</td>
+        <td>UNKNOWN</td>
+        <td>UNKNOWN</td>
+        <td>...</td>
         <td>${d.time}</td>
-        <td class="on">ON TIME</td>
+        <td class="${className}">${status}</td>
         `;
 
         board.appendChild(tr);
+
+        /* 🔊 ONLY FIRST TIME ANNOUNCE */
+        if(!d.spoken){
+            departureAnnouncement(d);
+            d.spoken=true;
+        }
     });
 }
 
