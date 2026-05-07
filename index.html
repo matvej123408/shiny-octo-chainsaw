@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="UTF-8">
 <title>DEPARTURES BOARD</title>
@@ -28,7 +28,6 @@ header{
     display:flex;
     gap:10px;
     align-items:center;
-    flex-wrap:wrap;
 }
 
 #search{
@@ -39,7 +38,7 @@ header{
     border:1px solid #333;
 }
 
-select,button,input{
+select,button{
     padding:10px;
     background:#111;
     color:#ffcc00;
@@ -101,21 +100,6 @@ tr:nth-child(even){
 .on{
     color:#00ff66;
 }
-
-.delayed{
-    color:#ff4444;
-    animation:blink 1s infinite;
-}
-
-.early{
-    color:#00ccff;
-}
-
-@keyframes blink{
-    0%{opacity:1;}
-    50%{opacity:0.4;}
-    100%{opacity:1;}
-}
 </style>
 </head>
 
@@ -134,23 +118,17 @@ tr:nth-child(even){
         <option value="ua">Українська</option>
     </select>
 
+    <!-- VOICE SELECT -->
     <select id="voiceSelect"></select>
 
     <button onclick="toggleFullscreen()">FULLSCREEN</button>
 
-    <!-- GTFS ZIP -->
-    <input type="file" id="gtfsZip" accept=".zip">
-
-    <!-- GTFS REALTIME PB -->
-    <input type="file" id="gtfsRealtime" accept=".pb,.bin">
-
     <div id="results"></div>
+
 </div>
 
 <div id="drop">
-📦 DROP GTFS ZIP HERE
-<br><br>
-📡 LOAD GTFS REALTIME .PB FILE
+📦 DROP GTFS ZIP
 </div>
 
 <table>
@@ -158,6 +136,7 @@ tr:nth-child(even){
 <tr>
 <th>Line</th>
 <th>Destination</th>
+<th>Platform</th>
 <th>Departure</th>
 <th>Status</th>
 </tr>
@@ -168,13 +147,9 @@ tr:nth-child(even){
 
 <audio id="gong" src="gong.mp3"></audio>
 
-<script type="module">
-
-import GTFSRealtimeBindings from "https://cdn.jsdelivr.net/npm/gtfs-realtime-bindings@1.1.1/+esm";
+<script>
 
 let stops=[], stopTimes=[], trips=[], routes=[];
-
-let realtimeTripUpdates={};
 
 let currentStop=null;
 
@@ -182,14 +157,13 @@ let spoken={};
 let announced10min={};
 let announced5min={};
 let announced1min={};
-let announcedDelay={};
 
-let language="en";
+let language="it";
+
+/* ================= VOICE SYSTEM ================= */
 
 let voices=[];
 let selectedVoice=null;
-
-/* ================= VOICES ================= */
 
 function loadVoices(){
 
@@ -204,6 +178,7 @@ function loadVoices(){
         const opt=document.createElement("option");
 
         opt.value=i;
+
         opt.textContent=`${v.name} (${v.lang})`;
 
         voiceSelect.appendChild(opt);
@@ -214,8 +189,10 @@ function loadVoices(){
 
         selectedVoice=voices[voiceSelect.value];
 
-        localStorage.setItem("voiceIndex", voiceSelect.value);
-
+        localStorage.setItem(
+            "voiceIndex",
+            voiceSelect.value
+        );
     };
 
     const saved=localStorage.getItem("voiceIndex");
@@ -223,6 +200,7 @@ function loadVoices(){
     if(saved && voices[saved]){
 
         voiceSelect.value=saved;
+
         selectedVoice=voices[saved];
 
     }else{
@@ -233,19 +211,23 @@ function loadVoices(){
 }
 
 speechSynthesis.onvoiceschanged=loadVoices;
+
 loadVoices();
 
 /* ================= LANGUAGE ================= */
 
 function setLang(l){
+
     language=l;
+
 }
 
-/* ================= CSV ================= */
+/* ================= CSV PARSER ================= */
 
 function parseCSV(text){
 
     const rows=[];
+
     let cur="", row=[], q=false;
 
     for(let i=0;i<text.length;i++){
@@ -257,6 +239,7 @@ function parseCSV(text){
         else if(c==',' && !q){
 
             row.push(cur);
+
             cur="";
 
         }
@@ -264,10 +247,13 @@ function parseCSV(text){
         else if(c=='\n' && !q){
 
             row.push(cur);
+
             rows.push(row);
 
             row=[];
+
             cur="";
+
         }
 
         else cur+=c;
@@ -286,7 +272,6 @@ function parseCSV(text){
         });
 
         return o;
-
     });
 }
 
@@ -300,73 +285,43 @@ function normalize(t){
     .replace(/[\u0300-\u036f]/g,"");
 }
 
-/* ================= GTFS ZIP ================= */
+/* ================= DROP GTFS ================= */
 
-gtfsZip.onchange=async e=>{
+drop.ondragover=e=>e.preventDefault();
 
-    const file=e.target.files[0];
+drop.ondrop=async e=>{
 
-    if(!file) return;
+    e.preventDefault();
 
-    const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+    const file=e.dataTransfer.files[0];
 
-    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    const JSZip=(
+        await import(
+            "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
+        )
+    ).default;
 
-    stops=parseCSV(await zip.file("stops.txt").async("string"));
-    stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
-    trips=parseCSV(await zip.file("trips.txt").async("string"));
-    routes=parseCSV(await zip.file("routes.txt").async("string"));
+    const zip=await JSZip.loadAsync(
+        await file.arrayBuffer()
+    );
 
-    alert("GTFS Loaded!");
-};
+    stops=parseCSV(
+        await zip.file("stops.txt").async("string")
+    );
 
-/* ================= GTFS REALTIME PB ================= */
+    stopTimes=parseCSV(
+        await zip.file("stop_times.txt").async("string")
+    );
 
-gtfsRealtime.onchange=async e=>{
+    trips=parseCSV(
+        await zip.file("trips.txt").async("string")
+    );
 
-    const file=e.target.files[0];
+    routes=parseCSV(
+        await zip.file("routes.txt").async("string")
+    );
 
-    if(!file) return;
-
-    try{
-
-        const buffer=await file.arrayBuffer();
-
-        const feed=GTFSRealtimeBindings.transit_realtime.FeedMessage.decode(
-            new Uint8Array(buffer)
-        );
-
-        realtimeTripUpdates={};
-
-        feed.entity.forEach(entity=>{
-
-            if(!entity.tripUpdate) return;
-
-            const trip=entity.tripUpdate.trip;
-
-            const updates=entity.tripUpdate.stopTimeUpdate;
-
-            if(!trip || !updates?.length) return;
-
-            const first=updates[0];
-
-            realtimeTripUpdates[trip.tripId]={
-                delay:first.departure?.delay || 0
-            };
-
-        });
-
-        alert("GTFS Realtime Loaded!");
-
-        console.log(realtimeTripUpdates);
-
-    }catch(err){
-
-        console.error(err);
-
-        alert("Invalid GTFS-RT .pb file");
-
-    }
+    alert("GTFS loaded!");
 };
 
 /* ================= SEARCH ================= */
@@ -378,12 +333,16 @@ search.oninput=()=>{
     results.innerHTML="";
 
     if(!q){
+
         results.style.display="none";
+
         return;
     }
 
     stops
-    .filter(s=>normalize(s.stop_name).includes(q))
+    .filter(s=>
+        normalize(s.stop_name).includes(q)
+    )
     .slice(0,50)
     .forEach(s=>{
 
@@ -405,7 +364,6 @@ search.oninput=()=>{
         };
 
         results.appendChild(d);
-
     });
 
     results.style.display="block";
@@ -424,18 +382,46 @@ document.addEventListener("click",e=>{
 
 function getRoute(id){
 
-    const t=trips.find(x=>x.trip_id===id);
+    const t=trips.find(
+        x=>x.trip_id===id
+    );
 
-    const r=routes.find(x=>x.route_id===t?.route_id);
+    const r=routes.find(
+        x=>x.route_id===t?.route_id
+    );
 
     return r?.route_short_name || "BUS";
 }
 
 function getDest(id){
 
-    const t=trips.find(x=>x.trip_id===id);
+    const t=trips.find(
+        x=>x.trip_id===id
+    );
 
     return t?.trip_headsign || "UNKNOWN";
+}
+
+/* ================= PLATFORM ================= */
+
+function getPlatform(tripId){
+
+    const st=stopTimes.find(x=>
+
+        x.trip_id===tripId &&
+        x.stop_id===currentStop
+
+    );
+
+    return (
+
+        st?.platform_code ||
+        st?.track ||
+        st?.bay ||
+        st?.stop_headsign ||
+        "-"
+
+    );
 }
 
 function timeToSeconds(t){
@@ -447,11 +433,46 @@ function timeToSeconds(t){
     return h*3600 + m*60 + (s||0);
 }
 
+/* ================= ANNOUNCE ================= */
+
+async function announce(line,dest,msg){
+
+    const gong=document.getElementById("gong");
+
+    try{
+
+        await gong.play();
+
+    }catch(e){}
+
+    const u=new SpeechSynthesisUtterance(msg);
+
+    u.lang=
+
+        language==="it"?"it-IT":
+
+        language==="en"?"en-US":
+
+        language==="de"?"de-DE":
+
+        "uk-UA";
+
+    if(selectedVoice){
+
+        u.voice=selectedVoice;
+
+    }
+
+    u.rate=0.9;
+
+    speechSynthesis.speak(u);
+}
+
 /* ================= STATUS ================= */
 
 function getStatus(diff){
 
-    if(diff > 60) return "ON TIME";
+    if(diff > 60) return "IN ORARIO";
 
     if(diff <= 60 && diff > 20) return "ARRIVING";
 
@@ -462,23 +483,6 @@ function getStatus(diff){
     if(diff < 0 && diff >= -6) return "DEPARTED";
 
     return "DEPARTED";
-}
-
-function getDelayText(delay){
-
-    if(delay > 60){
-
-        return `DELAYED ${Math.floor(delay/60)} MIN`;
-
-    }
-
-    if(delay < -60){
-
-        return `EARLY ${Math.abs(Math.floor(delay/60))} MIN`;
-
-    }
-
-    return "ON TIME";
 }
 
 function getTimeLeft(depTime){
@@ -511,35 +515,6 @@ function getTimeLeft(depTime){
     return `⏱ ${s}s`;
 }
 
-/* ================= ANNOUNCE ================= */
-
-async function announce(line,dest,msg){
-
-    const gong=document.getElementById("gong");
-
-    try{
-        await gong.play();
-    }catch(e){}
-
-    const u=new SpeechSynthesisUtterance(msg);
-
-    u.lang =
-        language==="it"?"it-IT":
-        language==="de"?"de-DE":
-        language==="ua"?"uk-UA":
-        "en-US";
-
-    if(selectedVoice){
-
-        u.voice=selectedVoice;
-
-    }
-
-    u.rate=0.9;
-
-    speechSynthesis.speak(u);
-}
-
 /* ================= RENDER ================= */
 
 function render(){
@@ -560,28 +535,21 @@ function render(){
     let data=stopTimes
 
     .filter(t=>
+
         t.stop_id===currentStop &&
         t.departure_time
+
     )
 
-    .map(t=>{
+    .map(t=>({
 
-        const realtime=realtimeTripUpdates[t.trip_id];
+        trip_id:t.trip_id,
 
-        const delay=realtime?.delay || 0;
+        time:t.departure_time,
 
-        return {
+        sec:timeToSeconds(t.departure_time)
 
-            trip_id:t.trip_id,
-
-            time:t.departure_time,
-
-            sec:timeToSeconds(t.departure_time)+delay,
-
-            delay
-        };
-
-    })
+    }))
 
     .filter(t=>t.sec >= nowSec - 6);
 
@@ -612,103 +580,82 @@ function render(){
 
         const dest=getDest(d.trip_id);
 
+        const platform=getPlatform(d.trip_id);
+
         const diff=d.sec-nowSec;
 
-        /* 10 MIN */
+        /* 🔟 10 MIN */
 
-        if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
+        if(
+            diff<=600 &&
+            diff>595 &&
+            !announced10min[d.trip_id]
+        ){
 
             announced10min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `There is Bus ${line} to ${dest} ten minute away.`
+                `There is ${line} to ${dest} ten minute away.`
             );
         }
 
-        /* 5 MIN */
+        /* 🟡 5 MIN */
 
-        if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
+        if(
+            diff<=300 &&
+            diff>295 &&
+            !announced5min[d.trip_id]
+        ){
 
             announced5min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `There is Bus ${line} to ${dest} five minute away.`
+                `There is ${line} to ${dest} five minute away.`
             );
         }
 
-        /* 1 MIN */
+        /* 🔴 1 MIN */
 
-        if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
+        if(
+            diff<=60 &&
+            diff>55 &&
+            !announced1min[d.trip_id]
+        ){
 
             announced1min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`
-            );
-        }
-
-        /* DELAY ANNOUNCEMENT */
-
-        if(d.delay > 120 && !announcedDelay[d.trip_id]){
-
-            announcedDelay[d.trip_id]=true;
-
-            const mins=Math.floor(d.delay/60);
-
-            announce(
-                line,
-                dest,
-                `Attention please. The Bus ${line} to ${dest} is delayed by ${mins} minutes.`
+                `The ${line} to ${dest} is arriving please let passengers exit first.`
             );
         }
 
         const tr=document.createElement("tr");
 
-        let statusClass="on";
-
-        if(d.delay > 60){
-
-            statusClass="delayed";
-
-        }
-
-        if(d.delay < -60){
-
-            statusClass="early";
-
-        }
-
         tr.innerHTML=`
         <td>${line}</td>
-
         <td>${dest}</td>
-
+        <td>${platform}</td>
         <td>${getTimeLeft(d.time)}</td>
-
-        <td class="${statusClass}">
-            ${getStatus(diff)}
-            <br>
-            ${getDelayText(d.delay)}
-        </td>
+        <td class="on">${getStatus(diff)}</td>
         `;
 
         board.appendChild(tr);
 
         if(!spoken[line]){
 
-            spoken[line]=true;
-
             announce(
                 line,
                 dest,
-                `The Bus ${line} to ${dest} Added To The Board.`
+                `The ${line} to ${dest} Added To The Board.`
             );
+
+            spoken[line]=true;
         }
     });
 }
