@@ -102,7 +102,7 @@ tr:nth-child(even){
 }
 
 .delay{
-    color:#ff4444;
+    color:#ff3333;
     font-weight:bold;
 }
 
@@ -124,18 +124,18 @@ tr:nth-child(even){
 
 <div id="menu">
 
-    <input id="search" placeholder="Search station...">
+<input id="search" placeholder="Search station...">
 
-    <select id="lang" onchange="setLang(this.value)">
-        <option value="it">Italiano</option>
-        <option value="en">English</option>
-        <option value="de">Deutsch</option>
-        <option value="ua">Українська</option>
-    </select>
+<select id="lang" onchange="setLang(this.value)">
+<option value="it">Italiano</option>
+<option value="en">English</option>
+<option value="de">Deutsch</option>
+<option value="ua">Українська</option>
+</select>
 
-    <button onclick="toggleFullscreen()">FULLSCREEN</button>
+<button onclick="toggleFullscreen()">FULLSCREEN</button>
 
-    <div id="results"></div>
+<div id="results"></div>
 
 </div>
 
@@ -158,13 +158,9 @@ tr:nth-child(even){
 
 <script>
 
-/* ================= DATA ================= */
-
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 let language="it";
-
-/* ANNOUNCEMENTS */
 
 let announced10min={};
 let announced5min={};
@@ -172,11 +168,7 @@ let announced1min={};
 let announcedDoors={};
 let spoken={};
 
-/* REAL DELAYS */
-
 let delays={};
-
-/* ================= LANGUAGE ================= */
 
 function setLang(l){
     language=l;
@@ -347,13 +339,11 @@ function timeToSeconds(t){
     return h*3600 + m*60 + (s||0);
 }
 
-/* ================= REAL DELAY SYSTEM ================= */
+/* ================= REAL DELAYS ================= */
 
 function getDelay(tripId){
 
     if(delays[tripId]===undefined){
-
-        /* realistic operational delay */
 
         const rnd=Math.random();
 
@@ -383,7 +373,14 @@ function getDelay(tripId){
 
 /* ================= STATUS ================= */
 
-function getStatus(diff){
+function getStatus(diff,delay){
+
+    if(delay>0){
+
+        const mins=Math.floor(delay/60);
+
+        return `DELAY ${mins} MIN`;
+    }
 
     if(diff > 60) return "IN ORARIO";
 
@@ -501,8 +498,6 @@ function render(){
     })
     .filter(t=>t.sec >= nowSec - 6);
 
-    /* REMOVE DUPLICATES */
-
     const map=new Map();
 
     data.forEach(d=>{
@@ -574,25 +569,16 @@ function render(){
             playAudio("doors.wav");
         }
 
-        /* STATUS */
-
-        const status=getStatus(diff);
+        const status=getStatus(diff,d.delay);
 
         let statusClass="on";
 
-        if(status!=="IN ORARIO"){
-            statusClass="delay blink";
+        if(d.delay>0){
+            statusClass="delay";
         }
 
-        /* DELAY TEXT */
-
-        let delayText="";
-
-        if(d.delay>0){
-
-            const mins=Math.floor(d.delay/60);
-
-            delayText=` +${mins}m`;
+        if(status!=="IN ORARIO"){
+            statusClass+=" blink";
         }
 
         const tr=document.createElement("tr");
@@ -600,13 +586,11 @@ function render(){
         tr.innerHTML=`
         <td>${line}</td>
         <td>${dest}</td>
-        <td>${getTimeLeft(d.sec)}${delayText}</td>
+        <td>${getTimeLeft(d.sec)}</td>
         <td class="${statusClass}">${status}</td>
         `;
 
         board.appendChild(tr);
-
-        /* BOARD ANNOUNCEMENT */
 
         if(!spoken[d.trip_id]){
 
@@ -622,8 +606,6 @@ function render(){
 }
 
 setInterval(render,1000);
-
-/* ================= FULLSCREEN ================= */
 
 function toggleFullscreen(){
     document.documentElement.requestFullscreen();
