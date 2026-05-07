@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>EUROPEAN DEPARTURES SYSTEM</title>
+<title>DEPARTURES BOARD</title>
 
 <style>
 body{
@@ -17,17 +17,17 @@ header{
     padding:15px;
     text-align:center;
     font-size:40px;
+    letter-spacing:5px;
     border-bottom:4px solid #ffcc00;
 }
 
 #menu{
-    display:flex;
-    gap:10px;
+    position:relative;
     padding:10px;
     background:#0a0a0a;
-    flex-wrap:wrap;
+    display:flex;
+    gap:10px;
     align-items:center;
-    position:relative;
 }
 
 #search{
@@ -48,19 +48,22 @@ select,button{
 
 #results{
     position:absolute;
-    top:60px;
+    top:50px;
     left:10px;
-    background:#111;
     width:320px;
-    max-height:250px;
+    background:#111;
+    border:1px solid #333;
+    max-height:300px;
     overflow:auto;
     display:none;
-    border:1px solid #333;
-    z-index:9999;
+    z-index:1000;
 }
 
-.item{padding:10px;cursor:pointer;}
-.item:hover{background:#222;}
+.item{
+    padding:10px;
+    cursor:pointer;
+}
+.item:hover{background:#222}
 
 #drop{
     margin:10px;
@@ -72,57 +75,47 @@ select,button{
 table{
     width:100%;
     border-collapse:collapse;
-    font-size:20px;
-}
-
-th,td{
-    padding:10px;
-    text-align:center;
-    border-bottom:1px solid #222;
+    font-size:24px;
 }
 
 th{
     background:#111;
+    padding:12px;
     border-bottom:3px solid #ffcc00;
+}
+
+td{
+    padding:12px;
+    text-align:center;
+    border-bottom:1px solid #222;
 }
 
 tr:nth-child(even){background:#0a0a0a;}
 
 .on{color:#00ff66;}
-.cancel{color:#ff4444;}
-.delay{color:#ff8800;}
+.delay{color:red;font-weight:bold;}
 </style>
 </head>
 
 <body>
 
-<header>EUROPEAN DEPARTURES SYSTEM</header>
+<header>DEPARTURES</header>
 
 <div id="menu">
+    <input id="search" placeholder="Search station...">
 
-<input id="search" placeholder="Search station...">
+    <select id="lang" onchange="setLang(this.value)">
+        <option value="it">Italiano</option>
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+        <option value="ua">Українська</option>
+    </select>
 
-<select id="mode">
-<option value="schedule">GTFS SCHEDULE</option>
-<option value="realtime">GTFS REALTIME</option>
-</select>
+    <select id="voiceSelect"></select>
 
-<select id="langSelect">
-<option value="en-US">English</option>
-<option value="de-DE">Deutsch</option>
-<option value="fr-FR">Français</option>
-<option value="it-IT">Italiano</option>
-<option value="pl-PL">Polski</option>
-<option value="uk-UA">Українська</option>
-<option value="es-ES">Español</option>
-</select>
+    <button onclick="toggleFullscreen()">FULLSCREEN</button>
 
-<select id="voiceSelect"></select>
-
-<button onclick="toggleFullscreen()">FULLSCREEN</button>
-
-<div id="results"></div>
-
+    <div id="results"></div>
 </div>
 
 <div id="drop">📦 DROP GTFS ZIP</div>
@@ -130,84 +123,43 @@ tr:nth-child(even){background:#0a0a0a;}
 <table>
 <thead>
 <tr>
-<th>Type</th>
 <th>Line</th>
 <th>Destination</th>
-<th>Platform</th>
-<th>Coaches</th>
-<th>Calling At</th>
 <th>Departure</th>
+<th>Platform</th>
 <th>Status</th>
 </tr>
 </thead>
 <tbody id="board"></tbody>
 </table>
 
-<audio id="gong"></audio>
+<audio id="gong" src="gong.mp3"></audio>
 
 <script>
 
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 
-let voices=[], selectedVoice=null;
-let selectedLang="en-US";
+let spoken={};
+let announced10min={};
+let announced5min={};
+let announced1min={};
 
-/* ================= SEARCH ================= */
+let realtimeTripUpdates={};
 
-const searchInput=document.getElementById("search");
-const resultsBox=document.getElementById("results");
+let language="it";
 
-searchInput.addEventListener("input",()=>{
+let voices=[];
+let selectedVoice=null;
 
-    const q=searchInput.value.toLowerCase().trim();
-    resultsBox.innerHTML="";
-
-    if(!q){
-        resultsBox.style.display="none";
-        return;
-    }
-
-    const seen=new Set();
-
-    stops
-    .filter(s=>s.stop_name && s.stop_name.toLowerCase().includes(q))
-    .filter(s=>{
-        if(seen.has(s.stop_name)) return false;
-        seen.add(s.stop_name);
-        return true;
-    })
-    .slice(0,50)
-    .forEach(s=>{
-        const div=document.createElement("div");
-        div.className="item";
-        div.textContent=s.stop_name;
-
-        div.onclick=()=>{
-            currentStop=s.stop_id;
-            searchInput.value=s.stop_name;
-            resultsBox.style.display="none";
-            render();
-        };
-
-        resultsBox.appendChild(div);
-    });
-
-    resultsBox.style.display="block";
-});
-
-document.addEventListener("click",(e)=>{
-    if(!document.getElementById("menu").contains(e.target)){
-        resultsBox.style.display="none";
-    }
-});
-
-/* ================= VOICE ================= */
+/* ================= VOICES ================= */
 
 function loadVoices(){
+
     voices=speechSynthesis.getVoices();
 
     const voiceSelect=document.getElementById("voiceSelect");
+
     voiceSelect.innerHTML="";
 
     voices.forEach((v,i)=>{
@@ -219,9 +171,17 @@ function loadVoices(){
 
     voiceSelect.onchange=()=>{
         selectedVoice=voices[voiceSelect.value];
+        localStorage.setItem("voiceIndex",voiceSelect.value);
     };
 
-    selectedVoice=voices[0];
+    const saved=localStorage.getItem("voiceIndex");
+
+    if(saved && voices[saved]){
+        voiceSelect.value=saved;
+        selectedVoice=voices[saved];
+    }else{
+        selectedVoice=voices[0];
+    }
 }
 
 speechSynthesis.onvoiceschanged=loadVoices;
@@ -229,34 +189,74 @@ loadVoices();
 
 /* ================= LANGUAGE ================= */
 
-document.getElementById("langSelect").onchange=(e)=>{
-    selectedLang=e.target.value;
-};
+function setLang(l){
+    language=l;
+}
 
-/* ================= SPEECH ================= */
+/* ================= CSV ================= */
 
-function speak(text){
-    const u=new SpeechSynthesisUtterance(text);
-    u.rate=0.75;
-    u.lang=selectedLang;
+function parseCSV(text){
 
-    if(selectedVoice){
-        u.voice=selectedVoice;
+    const rows=[];
+    let cur="",row=[],q=false;
+
+    for(let i=0;i<text.length;i++){
+
+        const c=text[i];
+
+        if(c=='"') q=!q;
+
+        else if(c==',' && !q){
+            row.push(cur);
+            cur="";
+        }
+
+        else if(c=='\n' && !q){
+            row.push(cur);
+            rows.push(row);
+            row=[];
+            cur="";
+        }
+
+        else cur+=c;
     }
 
-    speechSynthesis.speak(u);
+    const headers=rows[0];
+
+    return rows.slice(1).map(r=>{
+
+        const o={};
+
+        headers.forEach((h,i)=>{
+            o[h.trim()] = (r[i]||"").trim();
+        });
+
+        return o;
+    });
+}
+
+/* ================= NORMALIZE ================= */
+
+function normalize(t){
+
+    return (t||"")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"");
 }
 
 /* ================= GTFS LOAD ================= */
 
-document.getElementById("drop").ondragover=e=>e.preventDefault();
+drop.ondragover=e=>e.preventDefault();
 
-document.getElementById("drop").ondrop=async e=>{
+drop.ondrop=async e=>{
+
     e.preventDefault();
 
     const file=e.dataTransfer.files[0];
 
     const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+
     const zip=await JSZip.loadAsync(await file.arrayBuffer());
 
     stops=parseCSV(await zip.file("stops.txt").async("string"));
@@ -264,99 +264,193 @@ document.getElementById("drop").ondrop=async e=>{
     trips=parseCSV(await zip.file("trips.txt").async("string"));
     routes=parseCSV(await zip.file("routes.txt").async("string"));
 
-    alert("GTFS loaded");
+    loadRealtime();
+
+    alert("GTFS loaded!");
 };
 
-/* ================= CSV ================= */
+/* ================= REALTIME GTFS-RT MDB-1089 ================= */
 
-function parseCSV(text){
-    const rows=[];
-    let cur="", row=[], q=false;
+async function loadRealtime(){
 
-    for(let i=0;i<text.length;i++){
-        const c=text[i];
-        if(c=='"') q=!q;
-        else if(c==',' && !q){row.push(cur);cur="";}
-        else if(c=='\n' && !q){row.push(cur);rows.push(row);row=[];cur="";}
-        else cur+=c;
+    try{
+
+        const res=await fetch(
+            "https://gtfs.hafas.de/realtime-feed/tripUpdates.pb"
+        );
+
+        console.log("Realtime loaded");
+
+    }catch(e){
+
+        console.log("Realtime unavailable");
+
     }
+}
 
-    const h=rows[0];
-    return rows.slice(1).map(r=>{
-        const o={};
-        h.forEach((x,i)=>o[x]=(r[i]||"").trim());
-        return o;
+/* ================= SEARCH ================= */
+
+search.oninput=()=>{
+
+    const q=normalize(search.value);
+
+    results.innerHTML="";
+
+    if(!q) return results.style.display="none";
+
+    stops
+    .filter(s=>normalize(s.stop_name).includes(q))
+    .slice(0,50)
+    .forEach(s=>{
+
+        const d=document.createElement("div");
+
+        d.className="item";
+
+        d.textContent=s.stop_name;
+
+        d.onclick=()=>{
+
+            currentStop=s.stop_id;
+
+            search.value=s.stop_name;
+
+            results.style.display="none";
+
+            render();
+        };
+
+        results.appendChild(d);
     });
+
+    results.style.display="block";
+};
+
+document.addEventListener("click",e=>{
+
+    if(!menu.contains(e.target)){
+        results.style.display="none";
+    }
+});
+
+/* ================= HELPERS ================= */
+
+function getRoute(id){
+
+    const t=trips.find(x=>x.trip_id===id);
+
+    const r=routes.find(x=>x.route_id===t?.route_id);
+
+    return r?.route_short_name || "BUS";
 }
 
-/* ================= CALLING AT ================= */
+function getDest(id){
 
-function getCallingAt(tripId,stopId){
+    const t=trips.find(x=>x.trip_id===id);
 
-    const list=stopTimes
-    .filter(x=>x.trip_id===tripId)
-    .sort((a,b)=>Number(a.stop_sequence)-Number(b.stop_sequence));
+    return t?.trip_headsign || "UNKNOWN";
+}
 
-    let found=false;
-    const out=[];
+function getPlatform(stop){
 
-    for(const s of list){
+    return stop.platform_code ||
+           stop.track ||
+           stop.platform ||
+           stop.stop_code ||
+           "-";
+}
 
-        if(s.stop_id===stopId){
-            found=true;
-            continue;
-        }
+function timeToSeconds(t){
 
-        if(found){
-            const st=stops.find(x=>x.stop_id===s.stop_id);
-            if(st) out.push(st.stop_name);
-        }
+    if(!t) return 999999;
+
+    const [h,m,s]=t.split(":").map(Number);
+
+    return h*3600 + m*60 + (s||0);
+}
+
+/* ================= TTS ================= */
+
+async function announce(line,dest,msg){
+
+    const gong=document.getElementById("gong");
+
+    try{
+        await gong.play();
+    }catch(e){}
+
+    const u=new SpeechSynthesisUtterance(msg);
+
+    u.lang =
+        language==="it"?"it-IT":
+        language==="en"?"en-US":
+        language==="de"?"de-DE":
+        "uk-UA";
+
+    if(selectedVoice){
+        u.voice=selectedVoice;
     }
 
-    return out.length ? out.join(", ") : "No further stops";
+    u.rate=0.9;
+
+    speechSynthesis.speak(u);
 }
 
-/* ================= ANNOUNCEMENTS ================= */
+/* ================= STATUS ================= */
 
-function departureAnnouncement(d){
+function getStatus(diff,delay){
 
-    const platform=d.platform || "UNKNOWN";
-    const operator="Rail Service";
-    const destination=d.dest;
+    if(delay>0){
+        return `RITARDO ${delay} MIN`;
+    }
 
-    const coaches=Math.floor(Math.random()*8)+4;
+    if(diff > 60) return "IN ORARIO";
+
+    if(diff <= 60 && diff > 20) return "ARRIVING";
+
+    if(diff <= 20 && diff > 1) return "ARRIVED";
+
+    if(diff <= 1 && diff >= 0) return "DEPARTING";
+
+    if(diff < 0 && diff >= -6) return "DEPARTED";
+
+    return "DEPARTED";
+}
+
+/* ================= TIME ================= */
+
+function getTimeLeft(depTime){
 
     const now=new Date();
-    const hh=now.getHours();
-    const mm=now.getMinutes();
 
-    const time=
-        hh===0 && mm===0 ? "Midnight" :
-        mm===0 ? `${hh} hundred` :
-        `${hh} ${mm}`;
+    const nowSec=
+        now.getHours()*3600 +
+        now.getMinutes()*60 +
+        now.getSeconds();
 
-    const callingAt=getCallingAt(d.trip_id,currentStop);
+    const depSec=timeToSeconds(depTime);
 
-    const text=
-`Platform ${platform}, for the ${time} ${operator} service to: ${destination}. Calling at ${callingAt}, and ${destination}. This train is formed of ${coaches} coaches.`;
+    let diff=depSec-nowSec;
 
-    speak(text);
-}
+    if(diff<=0) return "DEPARTED";
 
-function delayAnnouncement(d){
+    const h=Math.floor(diff/3600);
 
-    const text=
-`The ${d.time} Rail Service to ${d.dest}, is delayed by approximately ${d.delay} minutes. We are sorry that your journey will take longer than planned.`;
+    diff%=3600;
 
-    speak(text);
-}
+    const m=Math.floor(diff/60);
 
-function cancelAnnouncement(d){
+    const s=diff%60;
 
-    const text=
-`Your attention please! The ${d.time} Rail Service to ${d.dest}, has been cancelled. This is due to a member of the train crew being unavailable.`;
+    if(h>0){
+        return `${h}h ${m}m ${s}s`;
+    }
 
-    speak(text);
+    if(m>0){
+        return `${m}m ${s}s`;
+    }
+
+    return `${s}s`;
 }
 
 /* ================= RENDER ================= */
@@ -365,55 +459,141 @@ function render(){
 
     if(!currentStop) return;
 
+    const now=new Date();
+
+    const nowSec=
+        now.getHours()*3600 +
+        now.getMinutes()*60 +
+        now.getSeconds();
+
     const board=document.getElementById("board");
+
     board.innerHTML="";
 
     let data=stopTimes
-    .filter(t=>t.stop_id===currentStop)
-    .map(t=>{
+        .filter(t=>
+            t.stop_id===currentStop &&
+            t.departure_time
+        )
+        .map(t=>({
 
-        const trip=trips.find(x=>x.trip_id===t.trip_id);
-        const route=routes.find(x=>x.route_id===trip?.route_id);
-
-        return{
             trip_id:t.trip_id,
-            line: route?.route_short_name || route?.route_long_name || "UNKNOWN",
-            dest: trip?.trip_headsign || "UNKNOWN DESTINATION",
+
+            stop_id:t.stop_id,
+
             time:t.departure_time,
-            platform:t.platform_code || "UNKNOWN"
-        };
-    })
-    .slice(0,15);
+
+            sec:timeToSeconds(t.departure_time)
+
+        }))
+        .filter(t=>t.sec >= nowSec-6);
+
+    const map=new Map();
 
     data.forEach(d=>{
+
+        const line=getRoute(d.trip_id);
+
+        const dest=getDest(d.trip_id);
+
+        const key=line+"|"+dest+"|"+d.time;
+
+        if(!map.has(key)){
+            map.set(key,d);
+        }
+    });
+
+    const clean=[...map.values()]
+        .sort((a,b)=>a.sec-b.sec)
+        .slice(0,15);
+
+    clean.forEach(d=>{
+
+        const line=getRoute(d.trip_id);
+
+        const dest=getDest(d.trip_id);
+
+        const diff=d.sec-nowSec;
+
+        const stop=stops.find(s=>s.stop_id===d.stop_id);
+
+        const platform=getPlatform(stop||{});
+
+        const delay=0;
+
+        /* 🔟 10 MIN */
+
+        if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
+
+            announced10min[d.trip_id]=true;
+
+            announce(
+                line,
+                dest,
+                `There is ${line} to ${dest} ten minute away.`
+            );
+        }
+
+        /* 🟡 5 MIN */
+
+        if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
+
+            announced5min[d.trip_id]=true;
+
+            announce(
+                line,
+                dest,
+                `There is ${line} to ${dest} five minute away.`
+            );
+        }
+
+        /* 🔴 1 MIN */
+
+        if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
+
+            announced1min[d.trip_id]=true;
+
+            announce(
+                line,
+                dest,
+                `The ${line} to ${dest} is arriving please let passengers exit first.`
+            );
+        }
 
         const tr=document.createElement("tr");
 
         tr.innerHTML=`
-        <td>TRAIN</td>
-        <td>${d.line}</td>
-        <td>${d.dest}</td>
-        <td>${d.platform}</td>
-        <td>UNKNOWN</td>
-        <td>${getCallingAt(d.trip_id,currentStop)}</td>
+        <td>${line}</td>
+        <td>${dest}</td>
         <td>${d.time}</td>
-        <td class="on">ON TIME</td>
+        <td>${platform}</td>
+        <td class="${delay>0?'delay':'on'}">
+            ${getStatus(diff,delay)}
+        </td>
         `;
 
         board.appendChild(tr);
 
-        if(!d.spoken){
-            departureAnnouncement(d);
-            d.spoken=true;
+        if(!spoken[d.trip_id]){
+
+            spoken[d.trip_id]=true;
+
+            announce(
+                line,
+                dest,
+                `The ${line} to ${dest} Added To The Board.`
+            );
         }
     });
 }
 
+setInterval(render,1000);
+
+/* ================= FULLSCREEN ================= */
+
 function toggleFullscreen(){
     document.documentElement.requestFullscreen();
 }
-
-setInterval(render,1000);
 
 </script>
 
