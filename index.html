@@ -346,9 +346,45 @@ function getRoute(id){
 
 function getDest(id){
 
-    const t=trips.find(x=>x.trip_id===id);
+    const trip = trips.find(x => x.trip_id === id);
 
-    return t?.trip_headsign || "UNKNOWN";
+    if(!trip) return "UNKNOWN";
+
+    /* 1. USE trip_headsign */
+    if(
+        trip.trip_headsign &&
+        trip.trip_headsign.trim() !== "" &&
+        trip.trip_headsign.trim().toUpperCase() !== "UNKNOWN"
+    ){
+        return trip.trip_headsign.trim();
+    }
+
+    /* 2. USE LAST STOP OF TRIP */
+    const tripStops = stopTimes
+        .filter(x => x.trip_id === id)
+        .sort((a,b)=>
+            Number(a.stop_sequence) - Number(b.stop_sequence)
+        );
+
+    if(tripStops.length > 0){
+
+        const lastStop = tripStops[tripStops.length - 1];
+
+        const stopData = stops.find(
+            s => s.stop_id === lastStop.stop_id
+        );
+
+        if(
+            stopData &&
+            stopData.stop_name &&
+            stopData.stop_name.trim() !== ""
+        ){
+            return stopData.stop_name.trim();
+        }
+    }
+
+    /* 3. FALLBACK */
+    return "UNKNOWN";
 }
 
 function getPlatform(stop){
