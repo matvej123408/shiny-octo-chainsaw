@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>DEPARTURES BOARD</title>
+<title>EUROPEAN DEPARTURES BOARD</title>
 
 <style>
 body{
@@ -101,12 +101,16 @@ tr:nth-child(even){
 .on{
     color:#00ff66;
 }
+
+.delay{
+    color:#ff4444;
+}
 </style>
 </head>
 
 <body>
 
-<header>DEPARTURES</header>
+<header>EUROPEAN DEPARTURES</header>
 
 <div id="menu">
 
@@ -120,8 +124,8 @@ tr:nth-child(even){
 <option value="es-ES">Español</option>
 <option value="uk-UA">Українська</option>
 <option value="ru-RU">Русский</option>
+<option value="pl-PL">Polski</option>
 <option value="ja-JP">Japanese</option>
-<option value="zh-CN">Chinese</option>
 </select>
 
 <select id="voiceSelect"></select>
@@ -139,6 +143,7 @@ tr:nth-child(even){
 <table>
 <thead>
 <tr>
+<th>Type</th>
 <th>Line</th>
 <th>Destination</th>
 <th>Platform</th>
@@ -166,6 +171,54 @@ let selectedVoice=null;
 let announced3min={};
 let announcedArrival={};
 let announcedDelay={};
+
+/* =========================================================
+TRAIN TYPES
+========================================================= */
+
+const TRAIN_TYPES={
+
+"ICE":"Intercity Express",
+"IC":"InterCity",
+"EC":"EuroCity",
+"RJ":"Railjet",
+"RJX":"Railjet Express",
+"TLK":"Twoje Linie Kolejowe",
+"MP":"Mainline Passenger",
+"REG":"Regional",
+"RE":"Regional Express",
+"RB":"Regional Bahn",
+"S":"S-Bahn",
+"RER":"RER",
+"TGV":"TGV",
+"AVE":"AVE",
+"TER":"TER",
+"IR":"InterRegio",
+"NJ":"Nightjet",
+"EN":"EuroNight",
+"U":"Metro",
+"M":"Metro",
+"TRAM":"Tram",
+"BUS":"Bus"
+
+};
+
+function getTrainType(line){
+
+    if(!line) return "Train";
+
+    const upper=line.toUpperCase();
+
+    for(const key in TRAIN_TYPES){
+
+        if(upper.startsWith(key)){
+
+            return TRAIN_TYPES[key];
+        }
+    }
+
+    return "Train";
+}
 
 /* =========================================================
 VOICE SYSTEM
@@ -214,7 +267,7 @@ function setLang(l){
 }
 
 /* =========================================================
-CSV
+CSV PARSER
 ========================================================= */
 
 function parseCSV(text){
@@ -232,15 +285,18 @@ function parseCSV(text){
         else if(c==',' && !q){
 
             row.push(cur);
+
             cur="";
         }
 
         else if(c=='\n' && !q){
 
             row.push(cur);
+
             rows.push(row);
 
             row=[];
+
             cur="";
         }
 
@@ -276,7 +332,7 @@ function normalize(t){
 }
 
 /* =========================================================
-GTFS LOAD
+LOAD GTFS
 ========================================================= */
 
 drop.ondragover=e=>e.preventDefault();
@@ -581,12 +637,16 @@ async function speak(text){
         u.voice=selectedVoice;
     }
 
-    u.rate=0.52;
+    u.rate=0.75;
 
     speechSynthesis.speak(u);
 }
 
 async function departureAnnouncement(d){
+
+    const line=getRoute(d.trip_id);
+
+    const type=getTrainType(line);
 
     const platform=getPlatform(d.trip_id);
 
@@ -599,12 +659,16 @@ async function departureAnnouncement(d){
     const time=speakTime(d.time);
 
     const text=
-`Platform ${platform}, for the ${time} ${operator} service to ${dest}. Calling at ${calls}, and ${dest}. This train is formed of 8 coaches. First class is located at the front of the train.`;
+`Platform ${platform}, for the ${time} ${operator} ${type} service to ${dest}. Calling at ${calls}, and ${dest}. This train is formed of 8 coaches. First class is located at the front of the train.`;
 
     speak(text);
 }
 
 async function delayAnnouncement(d){
+
+    const line=getRoute(d.trip_id);
+
+    const type=getTrainType(line);
 
     const operator=getOperator(d.trip_id);
 
@@ -617,19 +681,23 @@ async function delayAnnouncement(d){
     );
 
     const text=
-`The ${time} ${operator} service to ${dest}, is delayed by approximately ${delay} minutes. We are sorry that your journey will take longer than planned.`;
+`The ${time} ${operator} ${type} service to ${dest}, is delayed by approximately ${delay} minutes. We are sorry that your journey will take longer than planned.`;
 
     speak(text);
 }
 
 async function arrivalAnnouncement(d){
 
+    const line=getRoute(d.trip_id);
+
+    const type=getTrainType(line);
+
     const platform=getPlatform(d.trip_id);
 
     const origin=getOrigin(d.trip_id);
 
     const text=
-`The train now approaching platform ${platform}, terminates here. This train is the service from ${origin}.`;
+`The ${type} now approaching platform ${platform}, terminates here. This train is the service from ${origin}.`;
 
     speak(text);
 }
@@ -676,23 +744,7 @@ function render(){
 
     .filter(t=>t.sec >= nowSec - 6);
 
-    const map=new Map();
-
-    data.forEach(d=>{
-
-        const line=getRoute(d.trip_id);
-
-        const dest=getDest(d.trip_id);
-
-        const key=line+"|"+dest+"|"+d.time;
-
-        if(!map.has(key)){
-
-            map.set(key,d);
-        }
-    });
-
-    const clean=[...map.values()]
+    const clean=data
     .sort((a,b)=>a.sec-b.sec)
     .slice(0,15);
 
@@ -700,13 +752,13 @@ function render(){
 
         const line=getRoute(d.trip_id);
 
+        const type=getTrainType(line);
+
         const dest=getDest(d.trip_id);
 
         const platform=getPlatform(d.trip_id);
 
         const diff=d.sec-nowSec;
-
-        /* 3 MIN ANNOUNCEMENT */
 
         if(
             diff<=180 &&
@@ -719,8 +771,6 @@ function render(){
             departureAnnouncement(d);
         }
 
-        /* ARRIVAL */
-
         if(
             diff<=45 &&
             diff>40 &&
@@ -731,8 +781,6 @@ function render(){
 
             arrivalAnnouncement(d);
         }
-
-        /* DELAY */
 
         if(
             d.delay>120 &&
@@ -747,6 +795,7 @@ function render(){
         const tr=document.createElement("tr");
 
         tr.innerHTML=`
+        <td>${type}</td>
         <td>${line}</td>
         <td>${dest}</td>
         <td>${platform}</td>
