@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>DEPARTURES BOARD</title>
@@ -28,6 +28,7 @@ header{
     display:flex;
     gap:10px;
     align-items:center;
+    flex-wrap:wrap;
 }
 
 #search{
@@ -109,21 +110,73 @@ tr:nth-child(even){
 
 <div id="menu">
 
-    <input id="search" placeholder="Search station...">
+<input id="search" placeholder="Search station...">
 
-    <select id="lang" onchange="setLang(this.value)">
-        <option value="it">Italiano</option>
-        <option value="en">English</option>
-        <option value="de">Deutsch</option>
-        <option value="ua">Українська</option>
-    </select>
+<select id="lang" onchange="setLang(this.value)">
 
-    <!-- VOICE SELECT -->
-    <select id="voiceSelect"></select>
+<option value="af-ZA">Afrikaans</option>
+<option value="sq-AL">Albanian</option>
+<option value="ar-SA">Arabic</option>
+<option value="hy-AM">Armenian</option>
+<option value="az-AZ">Azerbaijani</option>
+<option value="eu-ES">Basque</option>
+<option value="bn-BD">Bengali</option>
+<option value="bg-BG">Bulgarian</option>
+<option value="ca-ES">Catalan</option>
+<option value="zh-CN">Chinese Simplified</option>
+<option value="zh-TW">Chinese Traditional</option>
+<option value="hr-HR">Croatian</option>
+<option value="cs-CZ">Czech</option>
+<option value="da-DK">Danish</option>
+<option value="nl-NL">Dutch</option>
+<option value="en-US" selected>English</option>
+<option value="et-EE">Estonian</option>
+<option value="fi-FI">Finnish</option>
+<option value="fr-FR">French</option>
+<option value="gl-ES">Galician</option>
+<option value="ka-GE">Georgian</option>
+<option value="de-DE">German</option>
+<option value="el-GR">Greek</option>
+<option value="he-IL">Hebrew</option>
+<option value="hi-IN">Hindi</option>
+<option value="hu-HU">Hungarian</option>
+<option value="is-IS">Icelandic</option>
+<option value="id-ID">Indonesian</option>
+<option value="ga-IE">Irish</option>
+<option value="it-IT">Italian</option>
+<option value="ja-JP">Japanese</option>
+<option value="kk-KZ">Kazakh</option>
+<option value="ko-KR">Korean</option>
+<option value="lv-LV">Latvian</option>
+<option value="lt-LT">Lithuanian</option>
+<option value="mk-MK">Macedonian</option>
+<option value="ms-MY">Malay</option>
+<option value="no-NO">Norwegian</option>
+<option value="fa-IR">Persian</option>
+<option value="pl-PL">Polish</option>
+<option value="pt-PT">Portuguese</option>
+<option value="ro-RO">Romanian</option>
+<option value="ru-RU">Russian</option>
+<option value="sr-RS">Serbian</option>
+<option value="sk-SK">Slovak</option>
+<option value="sl-SI">Slovenian</option>
+<option value="es-ES">Spanish</option>
+<option value="sw-KE">Swahili</option>
+<option value="sv-SE">Swedish</option>
+<option value="ta-IN">Tamil</option>
+<option value="th-TH">Thai</option>
+<option value="tr-TR">Turkish</option>
+<option value="uk-UA">Ukrainian</option>
+<option value="ur-PK">Urdu</option>
+<option value="vi-VN">Vietnamese</option>
 
-    <button onclick="toggleFullscreen()">FULLSCREEN</button>
+</select>
 
-    <div id="results"></div>
+<select id="voiceSelect"></select>
+
+<button onclick="toggleFullscreen()">FULLSCREEN</button>
+
+<div id="results"></div>
 
 </div>
 
@@ -158,12 +211,12 @@ let announced10min={};
 let announced5min={};
 let announced1min={};
 
-let language="it";
-
-/* ================= VOICE SYSTEM ================= */
+let language="en-US";
 
 let voices=[];
 let selectedVoice=null;
+
+/* ================= LOAD VOICES ================= */
 
 function loadVoices(){
 
@@ -220,9 +273,23 @@ function setLang(l){
 
     language=l;
 
+    localStorage.setItem(
+        "boardLanguage",
+        l
+    );
 }
 
-/* ================= CSV PARSER ================= */
+const savedLang=
+localStorage.getItem("boardLanguage");
+
+if(savedLang){
+
+    language=savedLang;
+
+    document.getElementById("lang").value=savedLang;
+}
+
+/* ================= CSV ================= */
 
 function parseCSV(text){
 
@@ -241,7 +308,6 @@ function parseCSV(text){
             row.push(cur);
 
             cur="";
-
         }
 
         else if(c=='\n' && !q){
@@ -253,7 +319,6 @@ function parseCSV(text){
             row=[];
 
             cur="";
-
         }
 
         else cur+=c;
@@ -267,7 +332,8 @@ function parseCSV(text){
 
         headers.forEach((h,i)=>{
 
-            o[h.trim()] = (r[i]||"").trim();
+            o[h.trim()] =
+            (r[i]||"").trim();
 
         });
 
@@ -402,7 +468,7 @@ function getDest(id){
     return t?.trip_headsign || "UNKNOWN";
 }
 
-/* ================= PLATFORM ================= */
+/* ================= REAL PLATFORM ================= */
 
 function getPlatform(tripId){
 
@@ -413,12 +479,22 @@ function getPlatform(tripId){
 
     );
 
+    if(!st) return "-";
+
     return (
 
-        st?.platform_code ||
-        st?.track ||
-        st?.bay ||
-        st?.stop_headsign ||
+        st.platform_code ||
+
+        st.track ||
+
+        st.platform ||
+
+        st.bay ||
+
+        st.stop_platform ||
+
+        st.stop_code ||
+
         "-"
 
     );
@@ -433,34 +509,56 @@ function timeToSeconds(t){
     return h*3600 + m*60 + (s||0);
 }
 
-/* ================= ANNOUNCE ================= */
+/* ================= ANNOUNCEMENTS ================= */
 
-async function announce(line,dest,msg){
+async function announce(line,dest,msgType){
 
     const gong=document.getElementById("gong");
 
     try{
-
         await gong.play();
-
     }catch(e){}
 
-    const u=new SpeechSynthesisUtterance(msg);
+    let text="";
 
-    u.lang=
+    switch(msgType){
 
-        language==="it"?"it-IT":
+        case "added":
 
-        language==="en"?"en-US":
+            text=`${line} to ${dest} added to the board.`;
 
-        language==="de"?"de-DE":
+        break;
 
-        "uk-UA";
+        case "10min":
+
+            text=`${line} to ${dest} arriving in ten minutes.`;
+
+        break;
+
+        case "5min":
+
+            text=`${line} to ${dest} arriving in five minutes.`;
+
+        break;
+
+        case "1min":
+
+            text=`${line} to ${dest} is arriving. Please let passengers exit first.`;
+
+        break;
+
+        default:
+
+            text=msgType;
+    }
+
+    const u=new SpeechSynthesisUtterance(text);
+
+    u.lang=language;
 
     if(selectedVoice){
 
         u.voice=selectedVoice;
-
     }
 
     u.rate=0.9;
@@ -472,7 +570,7 @@ async function announce(line,dest,msg){
 
 function getStatus(diff){
 
-    if(diff > 60) return "IN ORARIO";
+    if(diff > 60) return "ON TIME";
 
     if(diff <= 60 && diff > 20) return "ARRIVING";
 
@@ -566,7 +664,6 @@ function render(){
         if(!map.has(key)){
 
             map.set(key,d);
-
         }
     });
 
@@ -584,7 +681,7 @@ function render(){
 
         const diff=d.sec-nowSec;
 
-        /* 🔟 10 MIN */
+        /* 10 MIN */
 
         if(
             diff<=600 &&
@@ -597,11 +694,11 @@ function render(){
             announce(
                 line,
                 dest,
-                `There is ${line} to ${dest} ten minute away.`
+                "10min"
             );
         }
 
-        /* 🟡 5 MIN */
+        /* 5 MIN */
 
         if(
             diff<=300 &&
@@ -614,11 +711,11 @@ function render(){
             announce(
                 line,
                 dest,
-                `There is ${line} to ${dest} five minute away.`
+                "5min"
             );
         }
 
-        /* 🔴 1 MIN */
+        /* 1 MIN */
 
         if(
             diff<=60 &&
@@ -631,7 +728,7 @@ function render(){
             announce(
                 line,
                 dest,
-                `The ${line} to ${dest} is arriving please let passengers exit first.`
+                "1min"
             );
         }
 
@@ -652,7 +749,7 @@ function render(){
             announce(
                 line,
                 dest,
-                `The ${line} to ${dest} Added To The Board.`
+                "added"
             );
 
             spoken[line]=true;
@@ -667,7 +764,6 @@ setInterval(render,1000);
 function toggleFullscreen(){
 
     document.documentElement.requestFullscreen();
-
 }
 
 </script>
