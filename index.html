@@ -159,16 +159,26 @@ tr:nth-child(even){
 <script>
 
 let stops=[], stopTimes=[], trips=[], routes=[];
+
 let currentStop=null;
+
 let language="it";
 
 let announced10min={};
 let announced5min={};
 let announced1min={};
 let announcedDoors={};
+
 let spoken={};
 
 let delays={};
+
+/* ================= GTFS REALTIME ================= */
+
+let realtimeFeedUrl =
+"https://YOUR_GTFS_REALTIME_URL_HERE";
+
+/* ================= LANGUAGE ================= */
 
 function setLang(l){
     language=l;
@@ -177,6 +187,7 @@ function setLang(l){
 /* ================= AUDIO ================= */
 
 function playAudio(file){
+
     return new Promise(resolve=>{
 
         const a=new Audio(file);
@@ -201,7 +212,9 @@ function parseCSV(text){
 
         const c=text[i];
 
-        if(c=='"') q=!q;
+        if(c=='"'){
+            q=!q;
+        }
 
         else if(c==',' && !q){
             row.push(cur);
@@ -215,7 +228,9 @@ function parseCSV(text){
             cur="";
         }
 
-        else cur+=c;
+        else{
+            cur+=c;
+        }
     }
 
     const headers=rows[0];
@@ -225,7 +240,9 @@ function parseCSV(text){
         const o={};
 
         headers.forEach((h,i)=>{
+
             o[h.trim()] = (r[i]||"").trim();
+
         });
 
         return o;
@@ -235,13 +252,14 @@ function parseCSV(text){
 /* ================= NORMALIZE ================= */
 
 function normalize(t){
+
     return (t||"")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g,"");
 }
 
-/* ================= GTFS ================= */
+/* ================= LOAD GTFS ================= */
 
 drop.ondragover=e=>e.preventDefault();
 
@@ -255,12 +273,25 @@ drop.ondrop=async e=>{
         "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
     )).default;
 
-    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    const zip=await JSZip.loadAsync(
+        await file.arrayBuffer()
+    );
 
-    stops=parseCSV(await zip.file("stops.txt").async("string"));
-    stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
-    trips=parseCSV(await zip.file("trips.txt").async("string"));
-    routes=parseCSV(await zip.file("routes.txt").async("string"));
+    stops=parseCSV(
+        await zip.file("stops.txt").async("string")
+    );
+
+    stopTimes=parseCSV(
+        await zip.file("stop_times.txt").async("string")
+    );
+
+    trips=parseCSV(
+        await zip.file("trips.txt").async("string")
+    );
+
+    routes=parseCSV(
+        await zip.file("routes.txt").async("string")
+    );
 
     alert("GTFS loaded!");
 };
@@ -286,6 +317,7 @@ search.oninput=()=>{
         const d=document.createElement("div");
 
         d.className="item";
+
         d.textContent=s.stop_name;
 
         d.onclick=()=>{
@@ -339,37 +371,69 @@ function timeToSeconds(t){
     return h*3600 + m*60 + (s||0);
 }
 
-/* ================= REAL DELAYS ================= */
+/* ================= REALTIME DELAYS ================= */
 
-function getDelay(tripId){
+async function loadRealtimeDelays(){
 
-    if(delays[tripId]===undefined){
-
-        const rnd=Math.random();
-
-        let delay=0;
-
-        if(rnd < 0.70){
-            delay=0;
-        }
-        else if(rnd < 0.85){
-            delay=60;
-        }
-        else if(rnd < 0.93){
-            delay=120;
-        }
-        else if(rnd < 0.98){
-            delay=300;
-        }
-        else{
-            delay=600;
-        }
-
-        delays[tripId]=delay;
+    if(
+        !realtimeFeedUrl ||
+        realtimeFeedUrl.includes("YOUR_GTFS_REALTIME")
+    ){
+        return;
     }
 
-    return delays[tripId];
+    try{
+
+        const response=await fetch(realtimeFeedUrl);
+
+        const data=await response.json();
+
+        if(!data.entity) return;
+
+        data.entity.forEach(entity=>{
+
+            const trip=entity.trip_update;
+
+            if(!trip) return;
+
+            const tripId=trip.trip?.trip_id;
+
+            if(!tripId) return;
+
+            let delay=0;
+
+            if(trip.delay!==undefined){
+                delay=trip.delay;
+            }
+
+            if(
+                trip.stop_time_update &&
+                trip.stop_time_update.length>0
+            ){
+
+                const stu=trip.stop_time_update[0];
+
+                if(stu.departure?.delay!==undefined){
+                    delay=stu.departure.delay;
+                }
+
+                else if(stu.arrival?.delay!==undefined){
+                    delay=stu.arrival.delay;
+                }
+            }
+
+            delays[tripId]=delay;
+        });
+
+    }catch(e){
+
+        console.log("GTFS RT ERROR",e);
+    }
 }
+
+loadRealtimeDelays();
+
+setInterval(loadRealtimeDelays,30000);
 
 /* ================= STATUS ================= */
 
@@ -382,7 +446,9 @@ function getStatus(diff,delay){
         return `DELAY ${mins} MIN`;
     }
 
-    if(diff > 60) return "IN ORARIO";
+    if(diff > 60){
+        return "IN ORARIO";
+    }
 
     if(diff <= 60 && diff > 20){
         return "ARRIVING";
@@ -416,7 +482,9 @@ function getTimeLeft(depSec){
 
     let diff=depSec-nowSec;
 
-    if(diff<=0) return "DEPARTED";
+    if(diff<=0){
+        return "DEPARTED";
+    }
 
     const h=Math.floor(diff/3600);
 
@@ -437,7 +505,7 @@ function getTimeLeft(depSec){
     return `⏱ ${s}s`;
 }
 
-/* ================= ANNOUNCE ================= */
+/* ================= TTS ================= */
 
 async function announce(line,dest,msg){
 
@@ -485,14 +553,15 @@ function render(){
     )
     .map(t=>{
 
-        const baseSec=timeToSeconds(t.departure_time);
+        const delay=delays[t.trip_id] || 0;
 
-        const delay=getDelay(t.trip_id);
+        const depSec=
+            timeToSeconds(t.departure_time) + delay;
 
         return{
             trip_id:t.trip_id,
             time:t.departure_time,
-            sec:baseSec + delay,
+            sec:depSec,
             delay:delay
         };
     })
@@ -502,7 +571,14 @@ function render(){
 
     data.forEach(d=>{
 
-        const key=d.trip_id+"_"+d.time;
+        const line=getRoute(d.trip_id);
+
+        const dest=getDest(d.trip_id);
+
+        const key=
+            line+"|"+
+            dest+"|"+
+            d.time;
 
         if(!map.has(key)){
             map.set(key,d);
@@ -523,46 +599,62 @@ function render(){
 
         /* 10 MIN */
 
-        if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
+        if(
+            diff<=600 &&
+            diff>595 &&
+            !announced10min[d.trip_id]
+        ){
 
             announced10min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `There is Bus ${line} to ${dest} ten minute away`
+                `There is Bus ${line} to ${dest} ten minute away.`
             );
         }
 
         /* 5 MIN */
 
-        if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
+        if(
+            diff<=300 &&
+            diff>295 &&
+            !announced5min[d.trip_id]
+        ){
 
             announced5min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `There is Bus ${line} to ${dest} five minute away`
+                `There is Bus ${line} to ${dest} five minute away.`
             );
         }
 
         /* 1 MIN */
 
-        if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
+        if(
+            diff<=60 &&
+            diff>55 &&
+            !announced1min[d.trip_id]
+        ){
 
             announced1min[d.trip_id]=true;
 
             announce(
                 line,
                 dest,
-                `The Bus Number ${line} to ${dest} is arriving please let passengers exit first`
+                `The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`
             );
         }
 
         /* DOORS */
 
-        if(diff<=15 && diff>10 && !announcedDoors[d.trip_id]){
+        if(
+            diff<=15 &&
+            diff>10 &&
+            !announcedDoors[d.trip_id]
+        ){
 
             announcedDoors[d.trip_id]=true;
 
@@ -587,7 +679,9 @@ function render(){
         <td>${line}</td>
         <td>${dest}</td>
         <td>${getTimeLeft(d.sec)}</td>
-        <td class="${statusClass}">${status}</td>
+        <td class="${statusClass}">
+            ${status}
+        </td>
         `;
 
         board.appendChild(tr);
@@ -599,7 +693,7 @@ function render(){
             announce(
                 line,
                 dest,
-                `The Bus ${line} to ${dest} departing`
+                `The Bus ${line} to ${dest} departing.`
             );
         }
     });
@@ -607,7 +701,10 @@ function render(){
 
 setInterval(render,1000);
 
+/* ================= FULLSCREEN ================= */
+
 function toggleFullscreen(){
+
     document.documentElement.requestFullscreen();
 }
 
