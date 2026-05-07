@@ -659,7 +659,7 @@ async function departureAnnouncement(d){
     const time=speakTime(d.time);
 
     const text=
-`Platform ${platform}, for the ${time} ${operator} ${type} service to ${dest}. Calling at ${calls}, and ${dest}. This train is formed of 8 coaches. First class is located at the front of the train.`;
+`Platform ${platform}, for the ${time} ${operator} ${type} service to ${dest}. Calling at ${calls}, and ${dest}. This train is formed of UNKNOWN coaches. .`;
 
     speak(text);
 }
