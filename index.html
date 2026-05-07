@@ -27,6 +27,7 @@ header{
     background:#0a0a0a;
     flex-wrap:wrap;
     align-items:center;
+    position:relative;
 }
 
 #search{
@@ -47,16 +48,21 @@ select,button{
 
 #results{
     position:absolute;
+    top:60px;
+    left:10px;
     background:#111;
     width:320px;
-    max-height:300px;
+    max-height:250px;
     overflow:auto;
     display:none;
     border:1px solid #333;
-    z-index:999;
+    z-index:9999;
 }
 
-.item{padding:10px;cursor:pointer;}
+.item{
+    padding:10px;
+    cursor:pointer;
+}
 .item:hover{background:#222;}
 
 #drop{
@@ -104,6 +110,16 @@ tr:nth-child(even){background:#0a0a0a;}
 <option value="realtime">GTFS REALTIME</option>
 </select>
 
+<select id="langSelect">
+<option value="en-US">English</option>
+<option value="de-DE">Deutsch</option>
+<option value="fr-FR">Français</option>
+<option value="it-IT">Italiano</option>
+<option value="pl-PL">Polski</option>
+<option value="uk-UA">Українська</option>
+<option value="es-ES">Español</option>
+</select>
+
 <select id="voiceSelect"></select>
 
 <button onclick="toggleFullscreen()">FULLSCREEN</button>
@@ -138,52 +154,108 @@ let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 
 let voices=[], selectedVoice=null;
+let selectedLang="en-US";
 
-/* ================= SEARCH FIX ================= */
+/* ================= FIXED SEARCH ================= */
 
-search.oninput=()=>{
+const searchInput=document.getElementById("search");
+const resultsBox=document.getElementById("results");
 
-    const q=search.value.toLowerCase().trim();
-    results.innerHTML="";
-    if(!q){results.style.display="none";return;}
+searchInput.addEventListener("input",()=>{
+
+    const q=searchInput.value.toLowerCase().trim();
+    resultsBox.innerHTML="";
+
+    if(!q){
+        resultsBox.style.display="none";
+        return;
+    }
 
     const seen=new Set();
 
-    stops
-    .filter(s=>s.stop_name.toLowerCase().includes(q))
+    const matches=stops
+    .filter(s=>s.stop_name && s.stop_name.toLowerCase().includes(q))
     .filter(s=>{
         if(seen.has(s.stop_name)) return false;
         seen.add(s.stop_name);
         return true;
     })
-    .slice(0,50)
-    .forEach(s=>{
-        const d=document.createElement("div");
-        d.className="item";
-        d.textContent=s.stop_name;
+    .slice(0,50);
 
-        d.onclick=()=>{
+    matches.forEach(s=>{
+        const div=document.createElement("div");
+        div.className="item";
+        div.textContent=s.stop_name;
+
+        div.onclick=()=>{
             currentStop=s.stop_id;
-            search.value=s.stop_name;
-            results.style.display="none";
+            searchInput.value=s.stop_name;
+            resultsBox.style.display="none";
             render();
         };
 
-        results.appendChild(d);
+        resultsBox.appendChild(div);
     });
 
-    results.style.display="block";
+    resultsBox.style.display="block";
+});
+
+document.addEventListener("click",(e)=>{
+    if(!document.getElementById("menu").contains(e.target)){
+        resultsBox.style.display="none";
+    }
+});
+
+/* ================= VOICES ================= */
+
+function loadVoices(){
+    voices=speechSynthesis.getVoices();
+
+    const voiceSelect=document.getElementById("voiceSelect");
+    voiceSelect.innerHTML="";
+
+    voices.forEach((v,i)=>{
+        const opt=document.createElement("option");
+        opt.value=i;
+        opt.textContent=`${v.name} (${v.lang})`;
+        voiceSelect.appendChild(opt);
+    });
+
+    voiceSelect.onchange=()=>{
+        selectedVoice=voices[voiceSelect.value];
+    };
+
+    selectedVoice=voices[0];
+}
+
+speechSynthesis.onvoiceschanged=loadVoices;
+loadVoices();
+
+/* ================= LANGUAGE ================= */
+
+document.getElementById("langSelect").onchange=(e)=>{
+    selectedLang=e.target.value;
 };
 
-document.addEventListener("click",e=>{
-    if(!menu.contains(e.target)) results.style.display="none";
-});
+/* ================= SPEECH ================= */
+
+function speak(text){
+    const u=new SpeechSynthesisUtterance(text);
+    u.rate=0.75;
+    u.lang=selectedLang;
+
+    if(selectedVoice){
+        u.voice=selectedVoice;
+    }
+
+    speechSynthesis.speak(u);
+}
 
 /* ================= GTFS LOAD ================= */
 
-drop.ondragover=e=>e.preventDefault();
+document.getElementById("drop").ondragover=e=>e.preventDefault();
 
-drop.ondrop=async e=>{
+document.getElementById("drop").ondrop=async e=>{
     e.preventDefault();
 
     const file=e.dataTransfer.files[0];
@@ -221,159 +293,43 @@ function parseCSV(text){
     });
 }
 
-/* ================= HELPERS ================= */
-
-function timeToSeconds(t){
-    if(!t) return 999999;
-    const [h,m,s]=t.split(":").map(Number);
-    return h*3600+m*60+(s||0);
-}
-
-/* ================= CALLING AT ================= */
-
-function getCallingAt(tripId,stopId){
-
-    const list=stopTimes
-    .filter(x=>x.trip_id===tripId)
-    .sort((a,b)=>Number(a.stop_sequence)-Number(b.stop_sequence));
-
-    let found=false;
-    const out=[];
-
-    for(const s of list){
-
-        if(s.stop_id===stopId){
-            found=true;
-            continue;
-        }
-
-        if(found){
-            const st=stops.find(x=>x.stop_id===s.stop_id);
-            if(st) out.push(st.stop_name);
-        }
-    }
-
-    return out.length ? out.join(", ") : "No further stops";
-}
-
-/* ================= SPEECH ================= */
-
-function speak(text){
-    const u=new SpeechSynthesisUtterance(text);
-    u.rate=0.75;
-    u.lang="en-US";
-    if(selectedVoice) u.voice=selectedVoice;
-    speechSynthesis.speak(u);
-}
-
-/* ================= YOUR ANNOUNCEMENT FORMAT ================= */
-
-function departureAnnouncement(d){
-
-    const platform="UNKNOWN";
-    const operator="Rail Service";
-    const destination=d.dest || "Unknown";
-
-    const coaches=Math.floor(Math.random()*8)+4;
-
-    const now=new Date();
-    const hh=now.getHours();
-    const mm=now.getMinutes();
-
-    const time=
-        hh===0 && mm===0 ? "Midnight" :
-        mm===0 ? `${hh} hundred` :
-        `${hh} ${mm}`;
-
-    const callingAt=getCallingAt(d.trip_id,currentStop);
-
-    const text=
-`Platform ${platform}, for the ${time} ${operator} service to: ${destination}. Calling at ${callingAt}, and ${destination}. This train is formed of ${coaches} coaches.`;
-
-    speak(text);
-}
-
-/* ================= DELAY ================= */
-
-function delayAnnouncement(d,operator,dest,time){
-
-    const text=
-`The ${time} ${operator} service to ${dest}, is delayed by approximately ${d.delay} minutes. We are sorry that your journey will take longer than planned.`;
-
-    speak(text);
-}
-
-/* ================= CANCEL ================= */
-
-function cancelAnnouncement(d,operator,dest,time){
-
-    const text=
-`Your attention please! The ${time} ${operator} service to ${dest}, has been cancelled. This is due to a member of the train crew being unavailable.`;
-
-    speak(text);
-}
-
-/* ================= RENDER ================= */
+/* ================= RENDER (SAFE) ================= */
 
 function render(){
-
     if(!currentStop) return;
-
-    const now=new Date();
-    const sec=now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
 
     const board=document.getElementById("board");
     board.innerHTML="";
 
-    let data=stopTimes
+    const data=stopTimes
     .filter(t=>t.stop_id===currentStop)
-    .map(t=>({
-        trip_id:t.trip_id,
-        time:t.departure_time,
-        sec:timeToSeconds(t.departure_time),
-        dest:"Route"
-    }))
     .slice(0,15);
 
     data.forEach(d=>{
 
         const tr=document.createElement("tr");
 
-        let status="ON TIME";
-        let className="on";
-
-        if(d.delay>0){
-            status=`DELAY ${d.delay}`;
-            className="delay";
-        }
-
-        if(d.cancelled){
-            status="CANCELLED";
-            className="cancel";
-        }
-
         tr.innerHTML=`
         <td>TRAIN</td>
-        <td>${d.dest}</td>
-        <td>${d.dest}</td>
+        <td>${d.trip_id}</td>
+        <td>${d.trip_id}</td>
         <td>UNKNOWN</td>
         <td>UNKNOWN</td>
         <td>...</td>
-        <td>${d.time}</td>
-        <td class="${className}">${status}</td>
+        <td>${d.departure_time}</td>
+        <td class="on">ON TIME</td>
         `;
 
         board.appendChild(tr);
 
-        /* 🔊 ONLY FIRST TIME ANNOUNCE */
         if(!d.spoken){
-            departureAnnouncement(d);
+            speak(`Train ${d.trip_id} added to the board.`);
             d.spoken=true;
         }
     });
 }
 
-setInterval(render,1000);
+/* ================= FULLSCREEN ================= */
 
 function toggleFullscreen(){
     document.documentElement.requestFullscreen();
