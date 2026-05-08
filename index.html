@@ -441,7 +441,7 @@ function getCoachCount(line){
     if(l.includes("RB")) return 3;
     if(l.includes("S")) return 4;
 
-    return Math.floor(Math.random()*6)+3;
+    return 5;
 }
 
 /* ================= ANNOUNCEMENTS ================= */
@@ -493,6 +493,20 @@ function render(){
 
         if(t.stop_id!==currentStop) return false;
 
+        const allStops=stopTimes
+        .filter(x=>x.trip_id===t.trip_id)
+        .sort((a,b)=>
+            Number(a.stop_sequence)-Number(b.stop_sequence)
+        );
+
+        const lastStop=allStops[allStops.length-1];
+
+        /* REMOVE ARRIVALS */
+
+        if(lastStop && lastStop.stop_id===currentStop){
+            return false;
+        }
+
         const depSec=timeToSeconds(t.departure_time);
 
         const now=new Date();
@@ -501,6 +515,8 @@ function render(){
             now.getHours()*3600+
             now.getMinutes()*60+
             now.getSeconds();
+
+        /* REMOVE 30 SEC AFTER DEPARTURE */
 
         return depSec >= nowSec-30;
 
@@ -571,7 +587,19 @@ function render(){
 
         board.appendChild(tr);
 
-        if(!announced[d.trip_id]){
+        const tripStops=stopTimes
+        .filter(x=>x.trip_id===d.trip_id)
+        .sort((a,b)=>
+            Number(a.stop_sequence)-Number(b.stop_sequence)
+        );
+
+        const lastStop=tripStops[tripStops.length-1];
+
+        if(
+            !announced[d.trip_id] &&
+            lastStop &&
+            lastStop.stop_id!==currentStop
+        ){
 
             departureAnnouncement(d);
 
