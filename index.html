@@ -156,6 +156,8 @@ tr:nth-child(even){
 
 <script>
 
+/* ================= DATA ================= */
+
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
 
@@ -163,6 +165,15 @@ let voices=[], selectedVoice=null;
 let selectedLang="en-US";
 
 let announced={};
+
+let stopsById={};
+let tripsById={};
+let routesById={};
+
+let stopTimesByStop={};
+let stopTimesByTrip={};
+
+let callingAtCache={};
 
 /* ================= SEARCH ================= */
 
@@ -185,9 +196,13 @@ searchInput.addEventListener("input",()=>{
     stops
     .filter(s=>s.stop_name && s.stop_name.toLowerCase().includes(q))
     .filter(s=>{
+
         if(seen.has(s.stop_name)) return false;
+
         seen.add(s.stop_name);
+
         return true;
+
     })
     .slice(0,50)
     .forEach(s=>{
@@ -198,9 +213,13 @@ searchInput.addEventListener("input",()=>{
         div.textContent=s.stop_name;
 
         div.onclick=()=>{
+
             currentStop=s.stop_id;
+
             searchInput.value=s.stop_name;
+
             resultsBox.style.display="none";
+
             render();
         };
 
@@ -250,6 +269,7 @@ function loadVoices(){
 }
 
 speechSynthesis.onvoiceschanged=loadVoices;
+
 loadVoices();
 
 /* ================= LANGUAGE ================= */
@@ -263,6 +283,8 @@ document.getElementById("langSelect").onchange=(e)=>{
 /* ================= SPEECH ================= */
 
 function speak(text){
+
+    speechSynthesis.cancel();
 
     const u=new SpeechSynthesisUtterance(text);
 
@@ -295,6 +317,53 @@ document.getElementById("drop").ondrop=async e=>{
     stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
     trips=parseCSV(await zip.file("trips.txt").async("string"));
     routes=parseCSV(await zip.file("routes.txt").async("string"));
+
+    /* ================= INDEXES ================= */
+
+    stopsById={};
+    tripsById={};
+    routesById={};
+
+    stopTimesByStop={};
+    stopTimesByTrip={};
+
+    callingAtCache={};
+
+    for(const s of stops){
+        stopsById[s.stop_id]=s;
+    }
+
+    for(const t of trips){
+        tripsById[t.trip_id]=t;
+    }
+
+    for(const r of routes){
+        routesById[r.route_id]=r;
+    }
+
+    for(const st of stopTimes){
+
+        if(!stopTimesByStop[st.stop_id]){
+            stopTimesByStop[st.stop_id]=[];
+        }
+
+        if(!stopTimesByTrip[st.trip_id]){
+            stopTimesByTrip[st.trip_id]=[];
+        }
+
+        stopTimesByStop[st.stop_id].push(st);
+
+        stopTimesByTrip[st.trip_id].push(st);
+    }
+
+    /* SORT ONLY ONCE */
+
+    for(const id in stopTimesByTrip){
+
+        stopTimesByTrip[id].sort((a,b)=>
+            Number(a.stop_sequence)-Number(b.stop_sequence)
+        );
+    }
 
     alert("GTFS loaded");
 };
@@ -394,11 +463,17 @@ function getMinutesLeft(time){
     return `⏱ ${s}s`;
 }
 
+/* ================= CALLING AT ================= */
+
 function getCallingAt(tripId,stopId){
 
-    const list=stopTimes
-    .filter(x=>x.trip_id===tripId)
-    .sort((a,b)=>Number(a.stop_sequence)-Number(b.stop_sequence));
+    const cacheKey=tripId+"_"+stopId;
+
+    if(callingAtCache[cacheKey]){
+        return callingAtCache[cacheKey];
+    }
+
+    const list=stopTimesByTrip[tripId] || [];
 
     let found=false;
 
@@ -414,16 +489,22 @@ function getCallingAt(tripId,stopId){
 
         if(found){
 
-            const st=stops.find(x=>x.stop_id===s.stop_id);
+            const st=stopsById[s.stop_id];
 
-            if(st) out.push(st.stop_name);
-
+            if(st){
+                out.push(st.stop_name);
+            }
         }
     }
 
-    return out.length
-    ? out.join(", ")
-    : "No further stops";
+    const result=
+        out.length
+        ? out.join(", ")
+        : "No further stops";
+
+    callingAtCache[cacheKey]=result;
+
+    return result;
 }
 
 /* ================= COACHES ================= */
@@ -487,17 +568,13 @@ function render(){
 
     board.innerHTML="";
 
-    let data=stopTimes
+    const stopData=stopTimesByStop[currentStop] || [];
+
+    let data=stopData
 
     .filter(t=>{
 
-        if(t.stop_id!==currentStop) return false;
-
-        const allStops=stopTimes
-        .filter(x=>x.trip_id===t.trip_id)
-        .sort((a,b)=>
-            Number(a.stop_sequence)-Number(b.stop_sequence)
-        );
+        const allStops=stopTimesByTrip[t.trip_id] || [];
 
         const lastStop=allStops[allStops.length-1];
 
@@ -520,9 +597,9 @@ function render(){
 
     .map(t=>{
 
-        const trip=trips.find(x=>x.trip_id===t.trip_id);
+        const trip=tripsById[t.trip_id];
 
-        const route=routes.find(x=>x.route_id===trip?.route_id);
+        const route=routesById[trip?.route_id];
 
         const line=
             route?.route_short_name ||
@@ -564,7 +641,7 @@ function render(){
 
     });
 
-    /* ================= REMOVE DUPLICATES + 5 MIN RULE ================= */
+    /* ================= REMOVE DUPLICATES ================= */
 
     const filtered=[];
 
@@ -590,6 +667,8 @@ function render(){
         }
     }
 
+    const fragment=document.createDocumentFragment();
+
     filtered.slice(0,15).forEach(d=>{
 
         const tr=document.createElement("tr");
@@ -605,13 +684,9 @@ function render(){
         <td class="on">ON TIME</td>
         `;
 
-        board.appendChild(tr);
+        fragment.appendChild(tr);
 
-        const tripStops=stopTimes
-        .filter(x=>x.trip_id===d.trip_id)
-        .sort((a,b)=>
-            Number(a.stop_sequence)-Number(b.stop_sequence)
-        );
+        const tripStops=stopTimesByTrip[d.trip_id] || [];
 
         const lastStop=tripStops[tripStops.length-1];
 
@@ -642,6 +717,8 @@ function render(){
         }
 
     });
+
+    board.appendChild(fragment);
 }
 
 /* ================= FULLSCREEN ================= */
@@ -652,9 +729,51 @@ function toggleFullscreen(){
 
 }
 
+/* ================= CLEAN ANNOUNCED CACHE ================= */
+
+setInterval(()=>{
+
+    const nowSec=
+        new Date().getHours()*3600+
+        new Date().getMinutes()*60+
+        new Date().getSeconds();
+
+    for(const id in announced){
+
+        const tripStop=stopTimesByTrip[id]?.[0];
+
+        if(!tripStop) continue;
+
+        const dep=timeToSeconds(tripStop.departure_time);
+
+        if(nowSec-dep > 3600){
+            delete announced[id];
+        }
+    }
+
+},60000);
+
 /* ================= AUTO UPDATE ================= */
 
-setInterval(render,1000);
+let renderTimer=null;
+
+function startRenderLoop(){
+
+    if(renderTimer){
+        clearInterval(renderTimer);
+    }
+
+    renderTimer=setInterval(()=>{
+
+        if(currentStop){
+            render();
+        }
+
+    },3000);
+
+}
+
+startRenderLoop();
 
 </script>
 
