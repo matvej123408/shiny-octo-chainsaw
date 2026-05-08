@@ -356,8 +356,6 @@ document.getElementById("drop").ondrop=async e=>{
         stopTimesByTrip[st.trip_id].push(st);
     }
 
-    /* SORT ONLY ONCE */
-
     for(const id in stopTimesByTrip){
 
         stopTimesByTrip[id].sort((a,b)=>
@@ -690,8 +688,6 @@ function render(){
 
         const lastStop=tripStops[tripStops.length-1];
 
-        /* ================= ANNOUNCE ONLY 3 MIN BEFORE ================= */
-
         const depSec=timeToSeconds(d.time);
 
         const now=new Date();
@@ -703,8 +699,16 @@ function render(){
 
         const diff=depSec-nowSec;
 
+        /* ================= UNIQUE ANNOUNCEMENT ================= */
+
+        const announceKey=
+            d.trip_id + "_" +
+            d.time + "_" +
+            d.platform + "_" +
+            d.dest;
+
         if(
-            !announced[d.trip_id] &&
+            !announced[announceKey] &&
             lastStop &&
             lastStop.stop_id!==currentStop &&
             diff <= 180 &&
@@ -713,7 +717,7 @@ function render(){
 
             departureAnnouncement(d);
 
-            announced[d.trip_id]=true;
+            announced[announceKey]=true;
         }
 
     });
@@ -733,25 +737,13 @@ function toggleFullscreen(){
 
 setInterval(()=>{
 
-    const nowSec=
-        new Date().getHours()*3600+
-        new Date().getMinutes()*60+
-        new Date().getSeconds();
+    if(Object.keys(announced).length > 5000){
 
-    for(const id in announced){
+        announced={};
 
-        const tripStop=stopTimesByTrip[id]?.[0];
-
-        if(!tripStop) continue;
-
-        const dep=timeToSeconds(tripStop.departure_time);
-
-        if(nowSec-dep > 3600){
-            delete announced[id];
-        }
     }
 
-},60000);
+},600000);
 
 /* ================= AUTO UPDATE ================= */
 
