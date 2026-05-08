@@ -562,23 +562,35 @@ function render(){
 
         return ta-tb;
 
-    })
+    });
 
-    .slice(0,15);
+    /* ================= REMOVE DUPLICATES + 5 MIN RULE ================= */
 
-    const unique=new Set();
+    const filtered=[];
 
-    data.forEach(d=>{
+    for(const d of data){
 
-        /* ================= REMOVE DUPLICATES ================= */
+        const currentTime=timeToSeconds(d.time);
 
-        const key=`${d.dest}_${d.time}`;
+        const exists=filtered.find(f=>{
 
-        if(unique.has(key)){
-            return;
+            const t=timeToSeconds(f.time);
+
+            const diff=Math.abs(currentTime-t);
+
+            return (
+                f.dest===d.dest &&
+                diff <= 300
+            );
+
+        });
+
+        if(!exists){
+            filtered.push(d);
         }
+    }
 
-        unique.add(key);
+    filtered.slice(0,15).forEach(d=>{
 
         const tr=document.createElement("tr");
 
