@@ -529,7 +529,34 @@ function departureAnnouncement(d){
 
     const platform=d.platform || "?";
 
-    const operator="Rail";
+    let operator="Train";
+
+    const upperLine=(d.line || "").toUpperCase();
+
+    if(upperLine.includes("ICE")){
+        operator="Intercity Express";
+    }
+    else if(upperLine.includes("IC")){
+        operator="Intercity";
+    }
+    else if(upperLine.includes("EC")){
+        operator="EuroCity";
+    }
+    else if(upperLine.includes("RJ")){
+        operator="Railjet";
+    }
+    else if(upperLine.includes("TGV")){
+        operator="T G V";
+    }
+    else if(upperLine.includes("RE")){
+        operator="Regional Express";
+    }
+    else if(upperLine.includes("RB")){
+        operator="Regional Bahn";
+    }
+    else if(upperLine.startsWith("S")){
+        operator="S Bahn";
+    }
 
     const destination=d.dest;
 
@@ -639,8 +666,6 @@ function render(){
 
     });
 
-    /* ================= REMOVE DUPLICATES ================= */
-
     const filtered=[];
 
     for(const d of data){
@@ -698,8 +723,6 @@ function render(){
             now.getSeconds();
 
         const diff=depSec-nowSec;
-
-        /* ================= UNIQUE ANNOUNCEMENT ================= */
 
         const announceKey=
             d.trip_id + "_" +
