@@ -560,6 +560,9 @@ function departureAnnouncement(d){
     else if(upperLine.includes("TGV")){
         operator="T G V";
     }
+    else if(upperLine.includes("EIP")){
+        operator="Rail";
+    }
     else if(upperLine.includes("REG")){
         operator="Regional";
     }
