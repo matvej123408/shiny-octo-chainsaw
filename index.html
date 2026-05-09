@@ -545,14 +545,20 @@ function departureAnnouncement(d){
     else if(upperLine.includes("RJ")){
         operator="Railjet";
     }
+    else if(upperLine.includes("TLK")){
+        operator="Rail";
+    }
+        else if(upperLine.includes("MP")){
+        operator="Rail";
+    }
     else if(upperLine.includes("TGV")){
         operator="T G V";
     }
-    else if(upperLine.includes("RE")){
-        operator="Regional Express";
+    else if(upperLine.includes("REG")){
+        operator="Regional";
     }
     else if(upperLine.includes("RB")){
-        operator="Regional Bahn";
+        operator="Regional";
     }
     else if(upperLine.startsWith("S")){
         operator="S Bahn";
