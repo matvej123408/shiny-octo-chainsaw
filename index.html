@@ -536,6 +536,12 @@ function departureAnnouncement(d){
     if(upperLine.includes("ICE")){
         operator="Intercity Express";
     }
+    else if(upperLine.includes("ECI")){
+        operator="EuroCity";
+    }
+    else if(upperLine.includes("ICN")){
+        operator="Intercity";
+    }
     else if(upperLine.includes("IC")){
         operator="Intercity";
     }
