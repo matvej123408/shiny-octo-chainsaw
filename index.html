@@ -566,6 +566,9 @@ function departureAnnouncement(d){
     else if(upperLine.includes("REG")){
         operator="Regional";
     }
+    else if(upperLine.includes("68")){
+        operator="night";
+    }
     else if(upperLine.includes("RB")){
         operator="Regional";
     }
